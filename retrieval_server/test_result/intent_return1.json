@@ -1,0 +1,87 @@
+{
+  "intent_nums": 3,
+  "intents": [
+    {
+      "num": 1,
+      "rewritten_query": "一级和二级等级保护系统对于边界防护的具体要求",
+      "retrieval_type": "hybrid_search",
+      "regulation_standards": [
+        "GB/T 22239-2019",
+        "GB/T 28448-2019"
+      ],
+      "source_standard": [
+        "信息安全技术网络安全等级保护基本要求",
+        "信息安全技术网络安全等级保护测评要求"
+      ],
+      "entities": {
+        "asset_objects": [],
+        "requirement_items": [
+          "边界防护"
+        ],
+        "applicability_level": [
+          "第一级",
+          "第二级"
+        ]
+      },
+      "reason": "查询具体要求和测评方法"
+    },
+    {
+      "num": 2,
+      "rewritten_query": "第一级等保系统中是否可以通过使用防火墙来实现边界防护以及对防火墙的具体规定",
+      "retrieval_type": "hybrid_search",
+      "regulation_standards": [
+        "GB/T 22239-2019",
+        "GB/T 28448-2019"
+      ],
+      "source_standard": [
+        "信息安全技术网络安全等级保护基本要求",
+        "信息安全技术网络安全等级保护测评要求"
+      ],
+      "entities": {
+        "asset_objects": [
+          "防火墙"
+        ],
+        "requirement_items": [
+          "物理环境安全",
+          "边界防护"
+        ],
+        "applicability_level": [
+          "第一级"
+        ]
+      },
+      "reason": "涉及资产对象和具体要求"
+    },
+    {
+      "num": 3,
+      "rewritten_query": "构建第一级的等保网络的简介",
+      "retrieval_type": "hybrid_search",
+      "regulation_standards": [
+        "信息安全等级保护管理办法",
+        "GB/T 22239-2019"
+      ],
+      "source_standard": [
+        "信息安全等级保护管理办法",
+        "信息安全技术网络安全等级保护基本要求"
+      ],
+      "entities": {
+        "asset_objects": [],
+        "requirement_items": [],
+        "applicability_level": [
+          "第一级"
+        ]
+      },
+      "reason": "宏观网络构建问题"
+    }
+  ],
+  "origin_query": "请列出一级,二级等级保护系统对于边界防护的具体要求各是什么样的?在第一级等保系统中，我能否通过使用防火墙来实现边界防护？对防火墙的规定是什么样的？给出一个300字的概述。除此之外,我要构建一个第一级的等保网络,给我一些简介.",
+  "history_msgs": [
+    {
+      "role": "user",
+      "content": "什么是等保？"
+    },
+    {
+      "role": "assistant",
+      "content": "等保是指网络安全等级保护，是国家网络安全保障的基本制度..."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+question_id,question_index,questionContent,name,questionNetCount
+question1,14,审计日志不完善,,是
+question2,15,身份鉴别不完善,,是
+question3,16,身份划分不规范,,是
+question4,17,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question5,18,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question6,19,存在安全漏洞,,是
+question7,20,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question8,21,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question9,22,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question10,22,存在安全漏洞,,是
+question11,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question12,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question13,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question14,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question15,14,存在安全漏洞,,是
+question16,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question17,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question18,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是
+question19,14,"防火墙策略配置粗,  (如地址为any, 服务为任意等)",,是

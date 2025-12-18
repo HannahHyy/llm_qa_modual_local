@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>异步流式多轮对话</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+    .app { display: flex; height: 100%; }
+    .sidebar { width: 280px; border-right: 1px solid #eee; padding: 12px; box-sizing: border-box; }
+    .sidebar h2 { margin: 0 0 12px 0; font-size: 16px; display:flex; align-items:center; justify-content:space-between; }
+    .sessions { max-height: calc(100% - 140px); overflow-y: auto; border: 1px solid #f0f0f0; border-radius: 6px; }
+    .session-item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f7f7f7; display:flex; align-items:center; justify-content:space-between; }
+    .session-item .name { flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session-item.active { background: #f0f7ff; }
+    .session-actions { margin-top: 10px; display:flex; gap:8px; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .chat-header { padding: 12px; border-bottom: 1px solid #eee; font-weight: bold; }
+    .chat-window { flex: 1; padding: 12px; overflow-y: auto; background: #fafafa; display:flex; flex-direction:column; }
+    .msg { margin: 8px 0; padding: 8px 10px; border-radius: 6px; max-width: 70%; white-space: pre-wrap; }
+    .msg.user { background: #dff0d8; align-self: flex-end; }
+    .msg.assistant { background: #fff; border: 1px solid #eee; align-self:flex-start; }
+    .msg.thinking { background: #f0f8ff; border: 1px solid #b3d9ff; color: #666; font-style: italic; }
+    .msg.knowledge { background: #f9f9f9; border: 1px solid #d9d9d9; border-left: 4px solid #52c41a; }
+    .msg.error { background: #fff2f0; border: 1px solid #ffccc7; color: #ff4d4f; }
+    .input-bar { display: flex; padding: 12px; border-top: 1px solid #eee; }
+    .input-bar input { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; }
+    .input-bar button { margin-left: 8px; padding: 8px 14px; border: none; background: #1677ff; color: #fff; border-radius: 6px; cursor: pointer; }
+    .input-bar button:disabled { background: #a0c5ff; cursor: not-allowed; }
+    .danger { background: #ff4d4f; }
+    .muted { color: #999; font-size:12px; }
+    .user-bar { display:flex; gap:8px; align-items:center; }
+    .user-input { flex:1; padding:6px 8px; border:1px solid #ddd; border-radius:6px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <h2>
+      对话框
+      <span class="muted" id="user-label"></span>
+    </h2>
+    <div class="user-bar">
+      <input id="user-id-input" class="user-input" placeholder="输入用户ID(必填)" />
+      <button id="save-user">保存</button>
+    </div>
+    <div class="session-actions">
+      <button id="new-session">新建对话</button>
+      <button id="delete-session" class="danger">删除当前</button>
+    </div>
+    <div id="sessions" class="sessions"></div>
+  </div>
+  <div class="main">
+    <div id="header" class="chat-header">请输入用户ID，选择左侧对话或新建</div>
+    <div id="chat" class="chat-window"></div>
+    <div class="input-bar">
+      <input id="input" placeholder="输入问题后回车或点击发送" />
+      <button id="send">发送</button>
+    </div>
+  </div>
+</div>
+<script>
+  const sessionsEl = document.getElementById('sessions');
+  const chatEl = document.getElementById('chat');
+  const headerEl = document.getElementById('header');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const newBtn = document.getElementById('new-session');
+  const delBtn = document.getElementById('delete-session');
+  const userInput = document.getElementById('user-id-input');
+  const saveUserBtn = document.getElementById('save-user');
+  const userLabel = document.getElementById('user-label');
+
+  let currentSession = null;
+  let streamingController = null;
+  let userId = localStorage.getItem('chat_user_id') || '';
+  if (userId) {
+    userInput.value = userId;
+    userLabel.textContent = `用户: ${userId}`;
+  }
+
+  function ensureUserId() {
+    userId = (userInput.value || '').trim();
+    if (!userId) {
+      alert('请先输入并保存用户ID');
+      return false;
+    }
+    return true;
+  }
+
+  function el(tag, cls, text) {
+    const d = document.createElement(tag);
+    if (cls) d.className = cls;
+    if (text !== undefined) d.textContent = text;
+    return d;
+  }
+
+  function addMsg(role, content) {
+    const m = el('div', 'msg ' + (role === 'user' ? 'user' : 'assistant'));
+    m.textContent = content;
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return m;
+  }
+
+  async function loadSessions() {
+    if (!ensureUserId()) return;
+    const res = await fetch(`/api/sessions?user_id=${encodeURIComponent(userId)}`);
+    const list = await res.json();
+    sessionsEl.innerHTML = '';
+    list.forEach(item => {
+      const div = el('div', 'session-item' + (currentSession === item.id ? ' active' : ''));
+      const nameSpan = el('span', 'name', `${item.name} (${item.id.slice(0,6)})`);
+      const del = el('button', 'danger', '删除');
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('确认删除该会话吗？')) return;
+        await fetch(`/api/sessions/${item.id}?user_id=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+        if (currentSession === item.id) {
+          currentSession = null;
+          chatEl.innerHTML = '';
+          headerEl.textContent = '请选择左侧对话或新建';
+        }
+        await loadSessions();
+      };
+      div.appendChild(nameSpan);
+      div.appendChild(del);
+      div.onclick = async () => {
+        currentSession = item.id;
+        renderSessions(list);
+        headerEl.textContent = item.name;
+        await loadMessages();
+      };
+      sessionsEl.appendChild(div);
+    });
+  }
+
+  function renderSessions(list) {
+    sessionsEl.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+    sessionsEl.childNodes.forEach(node => {
+      if (currentSession && node.firstChild && node.firstChild.textContent.includes(currentSession.slice(0,6))) node.classList.add('active');
+    });
+  }
+
+  async function newSession() {
+    if (!ensureUserId()) return;
+    const name = prompt('为新对话输入名称（可留空）') || undefined;
+    const res = await fetch(`/api/sessions?user_id=${encodeURIComponent(userId)}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+    const data = await res.json();
+    currentSession = data.session_id;
+    headerEl.textContent = name || '对话';
+    await loadSessions();
+    chatEl.innerHTML = '';
+  }
+
+  async function deleteCurrentSession() {
+    if (!ensureUserId()) return;
+    if (!currentSession) return alert('未选择会话');
+    if (!confirm('确认删除当前会话吗？')) return;
+    await fetch(`/api/sessions/${currentSession}?user_id=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+    currentSession = null;
+    await loadSessions();
+    chatEl.innerHTML = '';
+    headerEl.textContent = '请选择左侧对话或新建';
+  }
+
+  async function loadMessages() {
+    chatEl.innerHTML = '';
+    if (!currentSession || !ensureUserId()) return;
+    const res = await fetch(`/api/sessions/${currentSession}/messages?user_id=${encodeURIComponent(userId)}`);
+    const msgs = await res.json();
+    msgs.forEach(m => addMsg(m.role, m.content));
+  }
+
+  async function send() {
+    if (!ensureUserId()) return;
+    const text = inputEl.value.trim();
+    if (!text || !currentSession) return;
+    inputEl.value = '';
+    addMsg('user', text);
+
+    // 开始流式
+    if (streamingController) streamingController.abort();
+    streamingController = new AbortController();
+
+    let currentMsgElements = {
+      thinking: null,
+      normal: null,
+      knowledge: null,
+      error: null
+    };
+
+    try {
+      const res = await fetch(`/api/chat/stream?session_id=${encodeURIComponent(currentSession)}&user_id=${encodeURIComponent(userId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+        signal: streamingController.signal
+      });
+      if (!res.ok) {
+        let errText = await res.text();
+        const errorMsg = el('div', 'msg assistant error');
+        errorMsg.textContent = '错误: ' + errText;
+        chatEl.appendChild(errorMsg);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // 处理可能包含多个data:行的buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留最后一个可能不完整的行
+        
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            try {
+              const jsonStr = line.substring(5); // 移除'data:'前缀
+              const data = JSON.parse(jsonStr);
+              const content = data.content || '';
+              const messageType = data.message_type || 2;
+              
+              let msgElement = null;
+              let className = 'msg assistant';
+              
+              switch (messageType) {
+                case 1: // 思考过程
+                  className += ' thinking';
+                  if (!currentMsgElements.thinking) {
+                    currentMsgElements.thinking = el('div', className);
+                    chatEl.appendChild(currentMsgElements.thinking);
+                  }
+                  msgElement = currentMsgElements.thinking;
+                  break;
+                case 2: // 正常回答
+                  if (!currentMsgElements.normal) {
+                    currentMsgElements.normal = el('div', className);
+                    chatEl.appendChild(currentMsgElements.normal);
+                  }
+                  msgElement = currentMsgElements.normal;
+                  break;
+                case 3: // 知识内容
+                  className += ' knowledge';
+                  if (!currentMsgElements.knowledge) {
+                    currentMsgElements.knowledge = el('div', className);
+                    chatEl.appendChild(currentMsgElements.knowledge);
+                  }
+                  msgElement = currentMsgElements.knowledge;
+                  break;
+                case 4: // 错误信息
+                  className += ' error';
+                  if (!currentMsgElements.error) {
+                    currentMsgElements.error = el('div', className);
+                    chatEl.appendChild(currentMsgElements.error);
+                  }
+                  msgElement = currentMsgElements.error;
+                  break;
+                default:
+                  if (!currentMsgElements.normal) {
+                    currentMsgElements.normal = el('div', className);
+                    chatEl.appendChild(currentMsgElements.normal);
+                  }
+                  msgElement = currentMsgElements.normal;
+              }
+              
+              if (msgElement && content) {
+                msgElement.textContent += content;
+                chatEl.scrollTop = chatEl.scrollHeight;
+              }
+            } catch (parseError) {
+              console.warn('解析JSON失败:', line, parseError);
+              // 如果解析失败，作为普通文本处理
+              if (!currentMsgElements.normal) {
+                currentMsgElements.normal = el('div', 'msg assistant');
+                chatEl.appendChild(currentMsgElements.normal);
+              }
+              currentMsgElements.normal.textContent += line.substring(5);
+              chatEl.scrollTop = chatEl.scrollHeight;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      const errorMsg = el('div', 'msg assistant error');
+      errorMsg.textContent = '[中断] ' + e.message;
+      chatEl.appendChild(errorMsg);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+  }
+
+  saveUserBtn.onclick = () => {
+    const v = (userInput.value || '').trim();
+    if (!v) {
+      alert('用户ID不能为空');
+      return;
+    }
+    userId = v;
+    localStorage.setItem('chat_user_id', userId);
+    userLabel.textContent = `用户: ${userId}`;
+    loadSessions();
+  };
+  delBtn.onclick = deleteCurrentSession;
+  sendBtn.onclick = send;
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') send();
+  });
+  newBtn.onclick = newSession;
+
+  // 初始化
+  (async function init(){
+    if (userId) await loadSessions();
+  })();
+</script>
+</body>
+</html>

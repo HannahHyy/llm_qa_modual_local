@@ -1,0 +1,39 @@
+{
+  "intent_nums": 1,
+  "intents": [
+    {
+      "num": 1,
+      "rewritten_query": "一级等级保护系统实现边界隔离的技术要求和相关产品推荐",
+      "retrieval_type": "hybrid_search",
+      "regulation_standards": [
+        "GB/T 22239-2019",
+        "GB/T 28448-2019"
+      ],
+      "source_standard": [
+        "信息安全技术网络安全等级保护基本要求",
+        "信息安全技术网络安全等级保护测评要求"
+      ],
+      "entities": {
+        "asset_objects": [],
+        "requirement_items": [
+          "边界防护"
+        ],
+        "applicability_level": [
+          "第一级"
+        ]
+      },
+      "reason": "问题同时涉及技术要求（边界防护）和产品推荐，需要同时查询基本要求和测评要求"
+    }
+  ],
+  "origin_query": "在一级等级保护系统中怎么实现边界隔离的？可以给我推荐一些相关产品吗？",
+  "history_msgs": [
+    {
+      "role": "user",
+      "content": "什么是等保？"
+    },
+    {
+      "role": "assistant",
+      "content": "等保是指网络安全等级保护，是国家网络安全保障的基本制度..."
+    }
+  ]
+}

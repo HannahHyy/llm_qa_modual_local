@@ -1,0 +1,151 @@
+services:
+  elasticsearch:
+    image: elasticsearch:8.11.3
+    container_name: elasticsearch
+    environment:
+      - node.name=es-node-1
+      - cluster.name=es-dev-cluster
+      - discovery.type=single-node             # 单节点模式，无需发现其他节点
+      - bootstrap.memory_lock=true             # 锁定内存防止交换
+      #- ES_JAVA_OPTS=-Djava.io.tmpdir=/usr/share/elasticsearch/jansi-tmp -Djansi.tmpdir=/usr/share/elasticsearch/jansi-tmp
+      - ELASTIC_PASSWORD=password               # 配置密码
+      #- xpack.security.enabled=false           # 关闭安全认证（方便调试）
+      - xpack.security.enrollment.enabled=false
+      - xpack.ml.enabled=false                 # 关闭机器学习功能（节省资源）
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./images_data/elasticsearch_data/:/usr/share/elasticsearch/data
+    tmpfs:
+      - /usr/share/elasticsearch/jansi-tmp:size=1g,mode=1777
+    ports:
+      - "9200:9200"
+    networks:
+      - ragflow
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -u elastic:password http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # 2. kibana 用于es可视化
+  kibana:
+    image: kibana:8.11.3
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_user
+      - ELASTICSEARCH_PASSWORD=kibana_user_password  
+      - I18N_LOCALE=zh-CN  # 设置中文界面
+    networks:
+      - ragflow
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # 3. Redis
+  redis:
+    image: redis:7
+    container_name: redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./images_data/redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - ragflow
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 4.mysql
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=ChangeMe123!
+      - MYSQL_DATABASE=chatdb
+      - MYSQL_USER=chatuser
+      - MYSQL_PASSWORD=ChangeMe123!
+      - TZ=Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./images_data/mysql_data:/var/lib/mysql
+    networks:
+      - ragflow
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # 5. Neo4j
+  neo4j:
+    image: neo4j:5.19.0
+    container_name: neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_server_memory_heap_initial__size=1G
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=1G
+      - TZ=Asia/Shanghai
+      - NEO4JLABS_PLUGINS=["apoc"]  # 安装APOC插件
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+    ports:
+      - "7474:7474"   # HTTP
+      - "7473:7473"   # HTTPS
+      - "7687:7687"   # Bolt
+    volumes:
+      - ./images_data/neo4j_data/data:/data
+      - ./images_data/neo4j_data/logs:/logs
+      - ./images_data/neo4j_data/import:/var/lib/neo4j/import
+      - ./images_data/neo4j_data/plugins:/var/lib/neo4j/plugins
+    networks:
+      - ragflow
+    healthcheck:
+      # test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474|| exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # embedding
+  embedding:
+    image: arm_python:0925
+    container_name: embedding
+    ports:
+      - "9000:8000"
+    networks:
+      - ragflow
+    environment:
+      - MODEL_NAME=BAAI/bge-large-zh-v1.5
+    volumes:
+      - ./embedding-models/cache:/root/cache
+      - ./embedding-models/cache/app.py:/app/app.py
+    deploy:
+      resources:
+        limits:
+          memory: 8G  
+    healthcheck:
+      # test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "python -c \"import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(1); result = s.connect_ex(('127.0.0.1', 8000)); s.close(); exit(result)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+networks:
+  ragflow:
+    driver: bridge

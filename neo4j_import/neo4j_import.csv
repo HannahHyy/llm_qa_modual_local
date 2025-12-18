@@ -1,0 +1,79 @@
+name,description,query,id,parentId,isFolder
+加载节点,,,8,,TRUE
+Node_Safeproduct,,"LOAD CSV WITH HEADERS FROM 'file:///Safeproduct.csv' AS row
+MERGE (a:Safeproduct {
+    SP_ID:row.SP_ID,
+    safeProductNo: row.safeProductNo,
+    name: row.name,
+    safeProductId: row.safeProductId,
+    safeProductCount: row.safeProductCount,
+    productType: row.productType
+});",9,8,FALSE
+Node_Question,,"LOAD CSV WITH HEADERS FROM 'file:///question.csv' AS row
+MERGE (a:Question {
+    questionId: row.question_id,
+    questionIndex: row.question_index,
+    questionContent: row.questionContent,
+    questionNetCount: row.questionNetCount
+});",10,8,FALSE
+Node_System,,"LOAD CSV WITH HEADERS FROM 'file:///SYSTEM.csv' AS row
+MERGE (a:SYSTEM {
+    systemId: row.systemId,
+    name: row.name,
+    systemSecretLevel: row.systemSecretLevel
+});",11,8,FALSE
+Node_NetName,,"LOAD CSV WITH HEADERS FROM 'file:///netName.csv' AS row
+MERGE (a:Netname {
+    netId: row.netid,
+    networkType: row.networkType,
+    name: row.name
+});",12,8,FALSE
+Node_Unit,,"LOAD CSV WITH HEADERS FROM 'file:///Unit.csv' AS row
+MERGE (a:Unit {
+    unitId: row.unitId,
+    unitType: row.unitType,
+    name: row.name,
+    unitArea: row.unitArea,
+    unitRegion: row.unitRegion
+});",13,8,FALSE
+Node_Totalintegrations,,"LOAD CSV WITH HEADERS FROM 'file:///totalintergration.csv' AS row
+MERGE (a:Totalintegrations {
+    totalIntegrationId: row.overallintergrationUnit_id,
+    name: row.name,
+    totalIntegrationLevel: row.totalIntergrationLevel,
+    totalIntegrationNo: row.totalIntergrationNo,
+    validatedateend: row.validatedateend
+});",14,8,FALSE
+node_terminal,,"LOAD CSV WITH HEADERS FROM 'file:///Terminaltype.csv' AS row
+MERGE (a:Terminaltype {
+    name:row.name,
+    terminalTypeId: row.terminalTypeId,
+    terminalSum: row.terminalSum
+});",22,8,FALSE
+
+加载关系,,,15,,TRUE
+relation_UNIT_NET,,"LOAD CSV WITH HEADERS FROM 'file:///UNIT_NET.csv' AS row
+MATCH (a:Unit{unitId: row.UNITID})
+MATCH (b:Netname{netId: row.NETID})
+MERGE (a)-[:UNIT_NET]->(b);",16,15,FALSE
+relation_QUESTIONNET,,"LOAD CSV WITH HEADERS FROM 'file:///net_question.csv' AS row
+MATCH (a:Question{questionId: row.question_id})
+MATCH (b:Netname{netId: row.net_id})
+MERGE (a)-[:QUESTIONNET]->(b);",17,15,FALSE
+relation_safeproduct_net,,"LOAD CSV WITH HEADERS FROM 'file:///SECURITY_NET.csv' AS row
+MATCH (a:Safeproduct{SP_ID: row.SPID})
+MATCH (b:Netname{netId: row.NETID})
+MERGE (a)-[:SECURITY_NET]->(b);",18,15,FALSE
+relation_totalintegration_net,,"LOAD CSV WITH HEADERS FROM 'file:///net_totaolintergration.csv' AS row
+MATCH (a:Totalintegrations{totalIntegrationId: row.overintergrationunit_id})
+MATCH (b:Netname{netId: row.net_id})
+MERGE (a)-[:OVERUNIT_NET]->(b);",19,15,FALSE
+relation_system_net,,"LOAD CSV WITH HEADERS FROM 'file:///SYSTEM_NET.csv' AS row
+MATCH (a:SYSTEM{systemId: row.sysID})
+MATCH (b:Netname{netId: row.NETID})
+MERGE (a)-[:SYSTEM_NET]->(b);",20,15,FALSE
+relation_operationunit_net,,"LOAD CSV WITH HEADERS FROM 'file:///OPERATIONUNIT_NET.csv' AS row
+MATCH (a:Totalintegrations{totalIntegrationId: row.t_id})
+MATCH (b:Netname{netId: row.net_id})
+MERGE (a)-[:OPERATIONUNIT_NET]->(b);",21,15,FALSE
+
