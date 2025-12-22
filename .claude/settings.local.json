@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(findstr:*)",
+      "Bash(ls:*)",
+      "Bash(test:*)",
+      "Bash(python -m py_compile:*)"
     ]
   }
 }
