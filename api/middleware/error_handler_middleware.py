@@ -33,8 +33,10 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
 
         except BaseAppException as e:
             # 处理业务异常
+            error_code = e.error_code
+            error_message = e.message
             logger.warning(
-                f"业务异常: {e.error_code} - {e.message}",
+                f"业务异常: {error_code} - {error_message}",
                 extra={"details": e.details}
             )
 

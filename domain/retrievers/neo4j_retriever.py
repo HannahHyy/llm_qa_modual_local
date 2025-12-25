@@ -32,7 +32,8 @@ class Neo4jRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int = 5,
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
+        generated_cypher: Optional[str] = None
     ) -> List[Knowledge]:
         """
         使用Neo4j检索知识
@@ -41,6 +42,7 @@ class Neo4jRetriever(BaseRetriever):
             query: 查询文本
             top_k: 返回结果数量
             filters: 过滤条件
+            generated_cypher: LLM生成的Cypher查询(优先使用)
 
         Returns:
             List[Knowledge]: 检索到的知识列表
@@ -52,12 +54,19 @@ class Neo4jRetriever(BaseRetriever):
             # 预处理查询
             processed_query = self.preprocess_query(query)
 
-            # 构建Cypher查询
-            cypher_query, params = self._build_cypher_query(
-                processed_query,
-                top_k,
-                filters
-            )
+            # 优先使用LLM生成的Cypher
+            if generated_cypher:
+                logger.info(f"使用LLM生成的Cypher: {generated_cypher}")
+                cypher_query = generated_cypher
+                params = {}
+            else:
+                # 回退到简单查询
+                logger.info("未提供生成的Cypher,使用简单匹配查询")
+                cypher_query, params = self._build_cypher_query(
+                    processed_query,
+                    top_k,
+                    filters
+                )
 
             # 执行查询
             results = self.neo4j_client.execute_query(cypher_query, params)
@@ -65,9 +74,24 @@ class Neo4jRetriever(BaseRetriever):
             # 转换为Knowledge对象
             knowledge_list = []
             for record in results:
-                knowledge = Knowledge.from_neo4j_record(
-                    record,
-                    score=record.get("score", 1.0)
+                # 将Neo4j结果转换为knowledge格式
+                # 结果可能是各种形式,尝试提取有意义的内容
+                content_parts = []
+                for key, value in record.items():
+                    if value is not None:
+                        content_parts.append(f"{key}: {value}")
+
+                content = "\n".join(content_parts) if content_parts else str(record)
+
+                knowledge = Knowledge(
+                    content=content,
+                    source="neo4j",
+                    score=1.0,
+                    title=f"Neo4j查询结果",
+                    metadata={
+                        "raw_record": record,
+                        "used_generated_cypher": bool(generated_cypher)
+                    }
                 )
                 knowledge_list.append(knowledge)
 
@@ -108,6 +132,10 @@ class Neo4jRetriever(BaseRetriever):
         """
         构建Cypher查询
 
+        注意：此方法构建简单的节点匹配查询
+        实际的Neo4j查询应该由意图解析器（Neo4jIntentParser）生成Cypher
+        然后通过execute_raw_cypher方法执行
+
         Args:
             query: 查询文本
             top_k: 返回数量
@@ -116,10 +144,28 @@ class Neo4jRetriever(BaseRetriever):
         Returns:
             tuple: (cypher查询, 参数字典)
         """
-        # 基础查询：全文搜索节点
+        # 简单的节点匹配查询（不依赖全文索引）
+        # 从问题中提取关键词进行匹配
+        import re
+        # 提取中文词语(2-4个字)作为关键词
+        keywords = re.findall(r'[\u4e00-\u9fff]{2,4}', query)
+        # 过滤掉常见停用词
+        stop_words = {'建设', '哪些', '网络', '多少', '数量', '什么', '怎么', '为什么', '如何', '服务器', '计算机'}
+        keywords = [kw for kw in keywords if kw not in stop_words]
+
+        # 如果没有提取到关键词,使用原始查询
+        if not keywords:
+            search_text = query[:20]  # 截取前20个字符
+        else:
+            # 使用第一个关键词(通常是地名或单位名)
+            search_text = keywords[0]
+
+        logger.info(f"Neo4j检索关键词: '{search_text}' (从'{query}'中提取)")
+
+        # 匹配所有节点类型：Netname, SYSTEM, Unit, Safeproduct, Totalintegrations
         cypher = """
-        CALL db.index.fulltext.queryNodes('knowledge_index', $query)
-        YIELD node, score
+        MATCH (node)
+        WHERE node.name CONTAINS $query_text
         """
 
         # 添加过滤条件
@@ -132,26 +178,48 @@ class Neo4jRetriever(BaseRetriever):
                     where_clauses.append(f"node.{field} = ${field}")
 
         if where_clauses:
-            cypher += "WHERE " + " AND ".join(where_clauses) + "\n"
+            cypher += "AND " + " AND ".join(where_clauses) + "\n"
 
         # 返回结果
         cypher += """
-        RETURN node.content AS content,
-               node.title AS title,
-               node.id AS id,
+        RETURN COALESCE(node.name, node.questionContent, 'Unknown') AS content,
+               COALESCE(node.name, '') AS title,
+               id(node) AS id,
                labels(node)[0] AS node_type,
                properties(node) AS properties,
-               score
-        ORDER BY score DESC
+               1.0 AS score
         LIMIT $limit
         """
 
         # 构建参数
-        params = {"query": query, "limit": top_k}
+        params = {"query_text": search_text, "limit": top_k}
         if filters:
             params.update(filters)
 
         return cypher, params
+
+    def execute_raw_cypher(self, cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """
+        执行原始Cypher查询（用于意图解析器生成的Cypher）
+
+        Args:
+            cypher: Cypher查询语句
+            params: 查询参数
+
+        Returns:
+            List[Dict[str, Any]]: 查询结果
+        """
+        try:
+            results = self.neo4j_client.execute_query(cypher, params or {})
+            logger.info(f"Neo4j原始Cypher执行成功: 结果数={len(results)}")
+            return results
+        except Exception as e:
+            logger.error(f"Neo4j原始Cypher执行失败: {str(e)}")
+            logger.error(f"Cypher: {cypher}")
+            raise RetrievalError(
+                f"Neo4j原始Cypher执行失败: {str(e)}",
+                details={"cypher": cypher, "error": str(e)}
+            )
 
     async def retrieve_relationships(
         self,

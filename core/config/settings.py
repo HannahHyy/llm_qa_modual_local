@@ -61,6 +61,7 @@ class ESSettings(BaseSettings):
     password: str = Field(default="password01", description="ES密码")
     knowledge_index: str = Field(default="kb_vector_store", description="知识库索引名")
     conversation_index: str = Field(default="conversation_history", description="会话历史索引名")
+    cypher_index: str = Field(default="qa_system", description="Neo4j Cypher示例索引名")
     timeout: int = Field(default=30, description="请求超时时间（秒）")
 
     model_config = SettingsConfigDict(

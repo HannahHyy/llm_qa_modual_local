@@ -77,15 +77,24 @@ class Knowledge(BaseModel):
             Knowledge: 知识对象
         """
         source = hit.get("_source", {})
+        raw_score = hit.get("_score", 0.0)
+
+        # 归一化score到0-1范围
+        # ES的score可能很大,需要归一化
+        # 使用sigmoid函数: 1 / (1 + exp(-x/10))
+        import math
+        normalized_score = 1.0 / (1.0 + math.exp(-raw_score / 10.0))
+
         return cls(
             content=source.get("content", ""),
             source=KnowledgeSource.ELASTICSEARCH,
-            score=hit.get("_score", 0.0),
+            score=min(normalized_score, 1.0),  # 确保不超过1.0
             title=source.get("title"),
             doc_id=hit.get("_id"),
             metadata={
                 "index": hit.get("_index"),
                 "type": hit.get("_type"),
+                "raw_score": raw_score,  # 保存原始score
                 **source.get("metadata", {})
             }
         )

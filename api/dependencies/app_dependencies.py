@@ -121,9 +121,10 @@ async def get_message_repository() -> MessageRepository:
     """获取消息仓储（单例）"""
     global _message_repository
     if _message_repository is None:
+        settings = get_cached_settings()
         redis_client = await get_redis_client()
         es_client = get_es_client()
-        _message_repository = MessageRepository(redis_client, es_client)
+        _message_repository = MessageRepository(redis_client, es_client, settings.es)
     return _message_repository
 
 
@@ -147,7 +148,15 @@ def get_neo4j_parser() -> Neo4jIntentParser:
     """获取Neo4j意图解析器（单例）"""
     global _neo4j_parser
     if _neo4j_parser is None:
-        _neo4j_parser = Neo4jIntentParser()
+        settings = get_cached_settings()
+        es_client = get_es_client()
+        llm_client = get_llm_client()
+        # 使用配置的Cypher示例索引(默认qa_system,可通过ES_CYPHER_INDEX配置)
+        _neo4j_parser = Neo4jIntentParser(
+            es_client=es_client,
+            llm_client=llm_client,
+            cypher_index=settings.es.cypher_index  # 从配置读取
+        )
     return _neo4j_parser
 
 
@@ -160,8 +169,10 @@ def get_es_retriever() -> ESRetriever:
     """获取ES检索器（单例）"""
     global _es_retriever
     if _es_retriever is None:
+        settings = get_cached_settings()
         es_client = get_es_client()
-        _es_retriever = ESRetriever(es_client)
+        # 使用配置中的知识库索引名
+        _es_retriever = ESRetriever(es_client, index_name=settings.es.knowledge_index)
     return _es_retriever
 
 

@@ -39,17 +39,26 @@
 1. **克隆项目并安装依赖**
 ```bash
 git clone <repository_url>
-cd llm_qa_modual_local
+cd combine_llm_new
 pip install -r requirements.txt
 ```
 
-2. **配置环境变量**
+2. **检查环境**
 ```bash
-cp .env.example .env
+# 检查所有依赖是否已安装
+python check_env.py
+
+# 检查项目模块是否正常
+python check_project.py
+```
+
+3. **配置环境变量**
+```bash
+# .env 文件已经存在，根据需要修改配置
 # 编辑 .env 文件，配置数据库连接信息
 ```
 
-3. **启动必要服务**
+4. **启动必要服务**
 ```bash
 # Redis
 docker run -d -p 6379:6379 redis:7
@@ -67,7 +76,7 @@ docker run -d -p 9200:9200 \
   elasticsearch:8.0.0
 ```
 
-4. **启动应用**
+5. **启动应用**
 ```bash
 # 开发模式
 python main.py
@@ -76,7 +85,7 @@ python main.py
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-5. **访问服务**
+6. **访问服务**
 - 根路径: http://localhost:8000/
 - API文档: http://localhost:8000/docs
 - 健康检查: http://localhost:8000/api/health/
@@ -126,11 +135,12 @@ llm_qa_modual_local/
 │   ├── logging/           # 日志管理
 │   └── exceptions/        # 异常定义
 ├── tests/                 # 测试
-├── docs/                  # 文档
+├── docs/                  # 文档（含pytest.ini）
 ├── old/                   # 旧版本代码（参考）
 ├── main.py                # 主程序
+├── .env                   # 环境配置（需自己创建）
 ├── .env.example           # 配置示例
-├── pytest.ini             # 测试配置
+├── .gitignore             # Git忽略文件
 └── requirements.txt       # 依赖列表
 ```
 
@@ -239,11 +249,11 @@ for line in response.iter_lines():
 
 ### 运行测试
 
-项目使用 pytest 进行测试。测试配置在 `pytest.ini` 中定义。
+项目使用 pytest 进行测试。测试配置文件位于 `docs/pytest.ini`。
 
 ```bash
 # 运行所有测试
-pytest
+pytest -c docs/pytest.ini
 
 # 运行单元测试
 pytest tests/unit -v
@@ -261,6 +271,8 @@ pytest --cov=core --cov=infrastructure --cov-report=html
 - `@pytest.mark.functional` - 功能测试
 - `@pytest.mark.slow` - 慢速测试
 - `@pytest.mark.skip_ci` - CI 环境跳过
+
+详见 [测试文档](tests/README.md) 和 [pytest配置](docs/pytest.ini)
 
 ### 代码规范
 

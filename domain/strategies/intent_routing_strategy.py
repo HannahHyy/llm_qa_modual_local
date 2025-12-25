@@ -80,10 +80,24 @@ class IntentRoutingStrategy:
 
         # 3. 执行检索
         try:
-            knowledge = await retriever.retrieve(
-                query=intent.parsed_query or query,
-                top_k=top_k
-            )
+            # 检查是否是Neo4j查询且有生成的Cypher
+            if (intent.intent_type == IntentType.NEO4J_QUERY and
+                isinstance(retriever, Neo4jRetriever)):
+                # 从intent metadata中获取生成的Cypher
+                generated_cypher = intent.metadata.get("generated_cypher")
+                logger.info(f"检测到Neo4j查询,generated_cypher={bool(generated_cypher)}")
+
+                knowledge = await retriever.retrieve(
+                    query=intent.parsed_query or query,
+                    top_k=top_k,
+                    generated_cypher=generated_cypher
+                )
+            else:
+                # 普通检索
+                knowledge = await retriever.retrieve(
+                    query=intent.parsed_query or query,
+                    top_k=top_k
+                )
         except Exception as e:
             logger.error(f"检索失败: {str(e)}, 回退到混合检索")
             # 检索失败时回退到混合检索
@@ -208,7 +222,13 @@ class IntentRoutingStrategy:
         # 首次尝试
         intent, knowledge = await self.route(query, context, top_k)
 
-        # 如果结果不足且启用回退
+        # Neo4j查询不需要fallback - Neo4j通过执行Cypher直接返回结果
+        # 即使返回0结果也是正常的(数据库中可能真的没有匹配数据)
+        if intent and intent.intent_type == "neo4j_query":
+            logger.info(f"Neo4j查询不启用fallback，直接返回结果: {len(knowledge)}条")
+            return intent, knowledge
+
+        # 如果结果不足且启用回退(仅对ES查询)
         if enable_fallback and len(knowledge) < top_k // 2:
             logger.info(f"检索结果不足（{len(knowledge)} < {top_k // 2}），尝试混合检索")
 

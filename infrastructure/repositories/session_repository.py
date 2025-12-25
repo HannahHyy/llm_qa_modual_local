@@ -114,6 +114,50 @@ class SessionRepository:
             logger.error(f"创建会话失败: {e}")
             raise DatabaseError(f"创建会话失败: {e}", details=str(e))
 
+    async def get_session(
+        self,
+        user_id: str,
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        获取单个会话详情
+
+        Args:
+            user_id: 用户ID
+            session_id: 会话ID
+
+        Returns:
+            会话详情字典
+
+        Raises:
+            ValueError: 会话不存在时抛出
+        """
+        try:
+            # 从MySQL获取会话信息
+            rows = self.mysql.execute_query(
+                "SELECT session_id, user_id, name, created_at, updated_at "
+                "FROM sessions WHERE session_id = %s AND user_id = %s AND is_active = 1",
+                (session_id, user_id)
+            )
+
+            if not rows:
+                raise ValueError(f"会话不存在: {session_id}")
+
+            row = rows[0]
+            return {
+                "session_id": row["session_id"],
+                "user_id": row["user_id"],
+                "name": row["name"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+            }
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"获取会话失败: {e}")
+            raise DatabaseError(f"获取会话失败: {e}", details=str(e))
+
     async def list_sessions(self, user_id: str) -> List[Dict[str, Any]]:
         """
         获取用户的所有会话列表
@@ -125,23 +169,9 @@ class SessionRepository:
             会话列表
         """
         try:
-            # 从Redis获取
-            sessions_dict = await self.redis.hgetall(self._sessions_key(user_id))
-
-            if sessions_dict:
-                sessions = []
-                for session_id, meta_json in sessions_dict.items():
-                    meta = json.loads(meta_json)
-                    sessions.append({
-                        "session_id": session_id,
-                        "name": meta.get("name", "对话"),
-                        "created_at": meta.get("created_at")
-                    })
-                return sessions
-
-            # Redis未命中，从MySQL获取
+            # 直接从MySQL获取完整信息（包括updated_at）
             rows = self.mysql.execute_query(
-                "SELECT session_id, name, created_at FROM sessions "
+                "SELECT session_id, name, created_at, updated_at FROM sessions "
                 "WHERE user_id = %s AND is_active = 1 "
                 "ORDER BY updated_at DESC",
                 (user_id,)
@@ -152,20 +182,10 @@ class SessionRepository:
                 session = {
                     "session_id": row["session_id"],
                     "name": row["name"],
-                    "created_at": row["created_at"].isoformat() if row["created_at"] else None
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
                 }
                 sessions.append(session)
-
-                # 回填Redis
-                meta = {
-                    "name": row["name"],
-                    "created_at": session["created_at"]
-                }
-                await self.redis.hset(
-                    self._sessions_key(user_id),
-                    row["session_id"],
-                    json.dumps(meta, ensure_ascii=False)
-                )
 
             logger.info(f"[MySQL] 获取会话列表成功: user_id={user_id}, count={len(sessions)}")
             return sessions
@@ -222,3 +242,12 @@ class SessionRepository:
             )
         except Exception as e:
             logger.warning(f"更新会话时间失败（非致命错误）: {e}")
+
+    async def update_session_timestamp(self, session_id: str) -> None:
+        """
+        更新会话时间戳(兼容old版本的方法名)
+
+        Args:
+            session_id: 会话ID
+        """
+        await self.update_session_time(session_id)
