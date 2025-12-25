@@ -36,7 +36,7 @@ env/
 .DS_Store
 
 # Environment variables
-.env
+# .env
 .env.local
 .env.*.local
 
