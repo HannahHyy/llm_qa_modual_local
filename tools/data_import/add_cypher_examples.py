@@ -22,78 +22,79 @@ def add_cypher_examples():
     es_client = ESClient(settings.es)
 
     # Cypher示例数据（用于Neo4j意图解析）
+    # 注意：使用实际数据库中的英文标签和关系名称
     examples = [
         {
             "intent": "查询单位建设的网络",
             "example": "河北单位建设了哪些网络?",
-            "cypher": "MATCH (u:单位)-[:拥有]->(n:网络) WHERE u.name CONTAINS '河北' RETURN u.name, n.name",
+            "cypher": "MATCH (u:Unit)-[:UNIT_NET]->(n:Netname) WHERE u.name CONTAINS '河北' RETURN u.name, n.name",
             "description": "查询特定单位拥有的网络资源"
         },
         {
             "intent": "查询所有单位网络关系",
             "example": "哪些单位建设了网络?",
-            "cypher": "MATCH (u:单位)-[:拥有]->(n:网络) RETURN u.name, n.name",
+            "cypher": "MATCH (u:Unit)-[:UNIT_NET]->(n:Netname) RETURN u.name, n.name",
             "description": "查询所有单位与网络的关系"
         },
         {
             "intent": "查询单位的系统",
             "example": "北京单位有哪些系统?",
-            "cypher": "MATCH (u:单位)-[:拥有]->(s:系统) WHERE u.name CONTAINS '北京' RETURN u.name, s.name",
+            "cypher": "MATCH (s:SYSTEM)<-[:SYSTEM_NET]-(n:Netname)<-[:UNIT_NET]-(u:Unit) WHERE u.name CONTAINS '北京' RETURN u.name, s.name",
             "description": "查询特定单位拥有的系统"
         },
         {
             "intent": "查询网络部署的安全产品",
             "example": "网络的安全产品有哪些?",
-            "cypher": "MATCH (n:网络)-[:部署]->(s:安全产品) RETURN n.name, s.name",
+            "cypher": "MATCH (s:Safeproduct)-[:SECURITY_NET]->(n:Netname) RETURN n.name, s.name",
             "description": "查询网络上部署的安全产品"
         },
         {
             "intent": "查询单位网络关系详情",
             "example": "查询单位和网络的关系",
-            "cypher": "MATCH (u:单位)-[r:拥有]->(n:网络) RETURN u.name, type(r), n.name LIMIT 10",
+            "cypher": "MATCH (u:Unit)-[r:UNIT_NET]->(n:Netname) RETURN u.name, type(r), n.name LIMIT 10",
             "description": "查询单位与网络之间的关系类型"
         },
         {
             "intent": "查询系统部署的网络",
             "example": "系统部署在哪些网络上?",
-            "cypher": "MATCH (s:系统)<-[:包含]-(n:网络) RETURN s.name, n.name",
+            "cypher": "MATCH (s:SYSTEM)-[:SYSTEM_NET]->(n:Netname) RETURN s.name, n.name",
             "description": "查询系统所在的网络"
         },
         {
             "intent": "按地区查询单位",
             "example": "河北省有哪些单位?",
-            "cypher": "MATCH (u:单位) WHERE u.address CONTAINS '河北' OR u.name CONTAINS '河北' RETURN u.name, u.type",
+            "cypher": "MATCH (u:Unit) WHERE u.unitArea CONTAINS '河北' OR u.name CONTAINS '河北' RETURN u.name, u.unitType",
             "description": "按地区筛选单位"
         },
         {
             "intent": "查询集成商信息",
             "example": "查询集成商信息",
-            "cypher": "MATCH (t:集成商) RETURN t.name, t.contact LIMIT 10",
+            "cypher": "MATCH (t:Totalintegrations) RETURN t.name LIMIT 10",
             "description": "查询集成商基本信息"
         },
         {
             "intent": "查询网络属性",
-            "example": "网络的IP地址范围是什么?",
-            "cypher": "MATCH (n:网络) RETURN n.name, n.ip_range LIMIT 10",
-            "description": "查询网络的IP地址范围属性"
+            "example": "网络的类型是什么?",
+            "cypher": "MATCH (n:Netname) RETURN n.name, n.networkType LIMIT 10",
+            "description": "查询网络的类型属性"
         },
         {
             "intent": "查询单位系统关系",
             "example": "单位和系统的关系",
-            "cypher": "MATCH (u:单位)-[:拥有]->(s:系统) RETURN u.name, s.name LIMIT 10",
-            "description": "查询单位与系统的拥有关系"
+            "cypher": "MATCH (u:Unit)-[:UNIT_NET]->(n:Netname)<-[:SYSTEM_NET]-(s:SYSTEM) RETURN u.name, s.name LIMIT 10",
+            "description": "查询单位与系统的关系"
         },
         {
-            "intent": "查询设备信息",
-            "example": "有哪些防火墙设备?",
-            "cypher": "MATCH (d:设备) WHERE d.type CONTAINS '防火墙' RETURN d.name, d.model, d.ip",
-            "description": "查询特定类型的设备信息"
+            "intent": "查询终端类型信息",
+            "example": "有哪些终端类型?",
+            "cypher": "MATCH (t:Terminaltype) RETURN t.name, t.terminalSum LIMIT 10",
+            "description": "查询终端类型信息"
         },
         {
-            "intent": "查询集成商服务的单位",
-            "example": "哪些集成商为某单位提供服务?",
-            "cypher": "MATCH (t:集成商)-[:集成]->(u:单位) RETURN t.name, u.name",
-            "description": "查询集成商与单位的服务关系"
+            "intent": "查询集成商服务的网络",
+            "example": "哪些集成商为网络提供服务?",
+            "cypher": "MATCH (t:Totalintegrations)-[:OVERUNIT_NET]->(n:Netname) RETURN t.name, n.name",
+            "description": "查询集成商与网络的服务关系"
         }
     ]
 

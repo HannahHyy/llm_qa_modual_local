@@ -7,7 +7,7 @@ Neo4j查询服务
 import re
 import json
 import asyncio
-from typing import List, Dict, Optional, AsyncGenerator
+from typing import List, Dict, Optional, AsyncGenerator, Union
 
 from infrastructure.clients.llm_client import LLMClient
 from infrastructure.clients.neo4j_client import Neo4jClient
@@ -326,54 +326,68 @@ class Neo4jIntentParser:
     """Neo4j意图解析器配置"""
 
     def __init__(self):
-        # Neo4j图数据库结构定义（从配置或数据库schema获取）
+        # Neo4j图数据库结构定义（使用实际数据库中的英文标签）
         self.nodes = {
-            "单位": {
+            "Unit": {
                 "description": "组织单位节点",
-                "properties": ["name", "type", "address"]
+                "properties": ["name", "unitType", "unitArea", "unitRegion", "unitId"]
             },
-            "网络": {
+            "Netname": {
                 "description": "网络节点",
-                "properties": ["name", "type", "ip_range"]
+                "properties": ["name", "networkType", "netId"]
             },
-            "系统": {
+            "SYSTEM": {
                 "description": "系统节点",
-                "properties": ["name", "type", "version"]
+                "properties": ["name", "systemSecretLevel", "systemId"]
             },
-            "设备": {
-                "description": "设备节点",
-                "properties": ["name", "type", "model", "ip"]
-            },
-            "安全产品": {
+            "Safeproduct": {
                 "description": "安全产品节点",
-                "properties": ["name", "type", "vendor"]
+                "properties": ["name", "productType", "safeProductNo", "SP_ID"]
             },
-            "集成商": {
+            "Totalintegrations": {
                 "description": "集成商节点",
-                "properties": ["name", "contact"]
+                "properties": ["name", "totalIntegrationLevel", "totalIntegrationNo", "totalIntegrationId"]
+            },
+            "Terminaltype": {
+                "description": "终端类型节点",
+                "properties": ["name", "terminalSum", "terminalTypeId"]
+            },
+            "Question": {
+                "description": "问题节点",
+                "properties": ["questionContent", "questionIndex", "questionId"]
             }
         }
 
         self.relationships = {
-            "拥有": {
-                "from": "单位",
-                "to": "网络/系统/设备",
-                "description": "拥有关系"
+            "UNIT_NET": {
+                "from": "Unit",
+                "to": "Netname",
+                "description": "单位拥有网络"
             },
-            "包含": {
-                "from": "网络",
-                "to": "系统/设备",
-                "description": "包含关系"
+            "SYSTEM_NET": {
+                "from": "SYSTEM",
+                "to": "Netname",
+                "description": "系统部署在网络"
             },
-            "部署": {
-                "from": "网络/系统",
-                "to": "安全产品",
-                "description": "部署关系"
+            "SECURITY_NET": {
+                "from": "Safeproduct",
+                "to": "Netname",
+                "description": "安全产品部署在网络"
             },
-            "集成": {
-                "from": "集成商",
-                "to": "单位",
-                "description": "集成关系"
+            "OVERUNIT_NET": {
+                "from": "Totalintegrations",
+                "to": "Netname",
+                "description": "集成商管理网络"
+            },
+            "OPERATIONUNIT_NET": {
+                "from": "Totalintegrations",
+                "to": "Netname",
+                "description": "运营单位管理网络"
+            },
+            "QUESTIONNET": {
+                "from": "Question",
+                "to": "Netname",
+                "description": "问题关联网络"
             }
         }
 
@@ -840,7 +854,7 @@ class Neo4jQueryService:
                     continue
 
                 try:
-                    cypher_result = self.neo4j_client.query(cypher)
+                    cypher_result = self.neo4j_client.execute_query(cypher)
                     item["intent_result"] = cypher_result
                     prompt_result.append(item)
                     knowledge_result += cypher_result

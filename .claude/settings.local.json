@@ -8,7 +8,8 @@
       "Bash(python -m py_compile:*)",
       "Bash(git add:*)",
       "Bash(python -m pytest:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(python main.py:*)"
     ]
   }
 }
