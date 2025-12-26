@@ -129,6 +129,82 @@ LLM回答:
         description="知识匹配提示词"
     )
 
+    # ==================== LLM路由器提示词 ====================
+
+    llm_router_prompt: str = Field(
+        default="""你是一个智能意图路由器，需要判断用户的查询应该要参考哪个知识库来回答。
+
+知识库数据源说明：
+1. neo4j：包含具体的业务数据，为业务图谱库，如某个单位的网络架构、系统配置、安全产品部署等具体信息
+2. es：包含网络安全相关的法规、标准、规范、条款等权威文档，为法规知识库
+3. hybrid：需要同时使用业务数据和法规标准进行对比分析
+4. none：不需要检索任何知识库，可以直接回答的问题（如问候语、闲聊、一般性问题等）
+
+历史对话上下文：
+{history_context}
+
+当前用户查询：{user_query}
+
+请分析这个查询的特点，判断应该使用哪个数据源：
+- 如果查询涉及具体的单位、网络、系统、设备等业务实体信息，选择"neo4j"
+- 如果查询涉及法规条款、标准要求、规范内容等，选择"es"
+- 如果查询需要将具体业务情况与法规要求进行对比分析，选择"hybrid"
+- 如果查询是问候语、闲聊、一般性问题或不涉及专业知识的简单问题，选择"none"
+
+请按照以下JSON格式输出你的决策：
+{{
+  "decision": "neo4j/es/hybrid/none",
+  "reasoning": "详细的决策理由",
+  "confidence": 0.9
+}}""",
+        description="LLM路由器提示词"
+    )
+
+    llm_router_system_prompt: str = Field(
+        default="你是一个专业的意图路由分析器，请仔细分析用户查询的特点并按照JSON格式输出路由判断。",
+        description="LLM路由器系统提示词"
+    )
+
+    # ==================== Neo4j意图解析提示词 ====================
+
+    neo4j_intent_only_prompt: str = Field(
+        default="""你是Neo4j图数据库的'智能意图解析器'。
+请根据输入的上下文，完成Neo4j查询的意图拆解，并对每个意图进行详细分析。
+你需要进行流式输出，其中分析思路需要展示到前端页面。
+请先详细说明你的分析思路，分析思路请完全以流利的中文自然语言进行描述，然后输出最终严格的JSON结果。
+最后的JSON结果，必须严格按照以下格式输出标识符（不要有任何变化）：
+'3.以下是json格式的解析结果：'
+[{{intent_item: string}}, {{intent_item: string}}, ...]
+说明:
+- intent_item: Neo4j查询的意图拆解的意图描述
+- 最多给出3个意图；若用户问题非常明确，则仅输出1个意图，能不拆分的尽量不拆分。
+
+在流式输出时，请按以下格式组织你的回答：
+1. 首先分析用户问题可以拆分成哪几个意图
+2. 以流利的中文输出每个意图的具体含义
+3. 最后输出完整的JSON结果。（在JSON之前必须输出标识符）。""",
+        description="Neo4j意图解析提示词"
+    )
+
+    neo4j_batch_cypher_prompt: str = Field(
+        default="""你是Neo4j图数据库的Cypher查询生成专家。
+请根据多个用户意图和提供的示例，为每个意图生成一条完整可执行的Cypher查询语句。
+要求：
+1. 为每个意图生成对应的Cypher语句，必须可以直接执行
+2. 参考每个意图对应的示例中的Cypher语法和模式
+3. 输出格式必须为严格的JSON格式，标识符为：'3.以下是json格式的解析结果：'
+4. JSON格式：[{{"intent_item": "意图描述", "cypher": "Cypher语句"}}, ...]
+5. 如果某个意图不明确或无法生成有效的Cypher，该意图的cypher字段返回空字符串
+6. 请先简要说明分析思路，然后输出JSON结果（在JSON之前必须输出标识符）""",
+        description="Neo4j批量Cypher生成提示词"
+    )
+
+    neo4j_summary_prompt: str = Field(
+        default="""请关闭思考模式，直接使用业务专员查到的结果对你的领导的问题作出回答，业务专员的结果不需要进行筛选，也不需要逐条分析，微小的错误请忽略，名称不统一也请忽略，回答的方式是先生成100个字的总结摘要，然后再进行详细回答。请参考以下模板回答。
+以下是根据涉密网业务图谱查询到的结果作出的回答：""",
+        description="Neo4j结果摘要生成提示词"
+    )
+
     class Config:
         env_prefix = "PROMPT_"
         env_file = ".env"
@@ -224,6 +300,70 @@ class LLMModelSettings(BaseSettings):
         description="知识匹配最大token数"
     )
 
+    # ==================== LLM路由器LLM ====================
+
+    router_model: str = Field(
+        default="qwen-plus",
+        description="LLM路由器使用的模型"
+    )
+
+    router_temperature: float = Field(
+        default=0.1,
+        description="LLM路由器温度（低温度确保判断准确）"
+    )
+
+    router_max_tokens: int = Field(
+        default=500,
+        description="LLM路由器最大token数"
+    )
+
+    # ==================== Neo4j相关LLM ====================
+
+    neo4j_intent_model: str = Field(
+        default="qwen-plus",
+        description="Neo4j意图解析使用的模型"
+    )
+
+    neo4j_intent_temperature: float = Field(
+        default=0.0,
+        description="Neo4j意图解析温度"
+    )
+
+    neo4j_intent_max_tokens: int = Field(
+        default=8000,
+        description="Neo4j意图解析最大token数"
+    )
+
+    neo4j_cypher_model: str = Field(
+        default="qwen-plus",
+        description="Neo4j Cypher生成使用的模型"
+    )
+
+    neo4j_cypher_temperature: float = Field(
+        default=0.0,
+        description="Neo4j Cypher生成温度"
+    )
+
+    neo4j_cypher_max_tokens: int = Field(
+        default=8000,
+        description="Neo4j Cypher生成最大token数"
+    )
+
+    neo4j_summary_model: str = Field(
+        default="qwen-plus",
+        description="Neo4j摘要生成使用的模型"
+    )
+
+    neo4j_summary_temperature: float = Field(
+        default=0.0,
+        description="Neo4j摘要生成温度"
+    )
+
+    neo4j_summary_max_tokens: int = Field(
+        default=8000,
+        description="Neo4j摘要生成最大token数"
+    )
+
     class Config:
         env_prefix = "LLM_MODEL_"
         env_file = ".env"
@@ -299,6 +439,32 @@ def get_knowledge_matching_prompt(llm_output: str, knowledge_base: str) -> str:
     return template.format(llm_output=llm_output, knowledge_base=knowledge_base)
 
 
+def get_llm_router_prompt(user_query: str, history_context: str) -> str:
+    """获取LLM路由器提示词"""
+    template = get_prompt_settings().llm_router_prompt
+    return template.format(user_query=user_query, history_context=history_context)
+
+
+def get_llm_router_system_prompt() -> str:
+    """获取LLM路由器系统提示词"""
+    return get_prompt_settings().llm_router_system_prompt
+
+
+def get_neo4j_intent_only_prompt() -> str:
+    """获取Neo4j意图解析提示词"""
+    return get_prompt_settings().neo4j_intent_only_prompt
+
+
+def get_neo4j_batch_cypher_prompt() -> str:
+    """获取Neo4j批量Cypher生成提示词"""
+    return get_prompt_settings().neo4j_batch_cypher_prompt
+
+
+def get_neo4j_summary_prompt() -> str:
+    """获取Neo4j摘要生成提示词"""
+    return get_prompt_settings().neo4j_summary_prompt
+
+
 __all__ = [
     "PromptSettings",
     "LLMModelSettings",
@@ -310,4 +476,9 @@ __all__ = [
     "get_knowledge_enhanced_prompt",
     "get_summary_prompt",
     "get_knowledge_matching_prompt",
+    "get_llm_router_prompt",
+    "get_llm_router_system_prompt",
+    "get_neo4j_intent_only_prompt",
+    "get_neo4j_batch_cypher_prompt",
+    "get_neo4j_summary_prompt",
 ]

@@ -22,6 +22,11 @@ from .prompts import (
     get_knowledge_enhanced_prompt,
     get_summary_prompt,
     get_knowledge_matching_prompt,
+    get_llm_router_prompt,
+    get_llm_router_system_prompt,
+    get_neo4j_intent_only_prompt,
+    get_neo4j_batch_cypher_prompt,
+    get_neo4j_summary_prompt,
 )
 
 __all__ = [
@@ -44,4 +49,9 @@ __all__ = [
     "get_knowledge_enhanced_prompt",
     "get_summary_prompt",
     "get_knowledge_matching_prompt",
+    "get_llm_router_prompt",
+    "get_llm_router_system_prompt",
+    "get_neo4j_intent_only_prompt",
+    "get_neo4j_batch_cypher_prompt",
+    "get_neo4j_summary_prompt",
 ]

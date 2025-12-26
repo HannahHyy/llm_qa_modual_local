@@ -22,6 +22,7 @@ from domain.retrievers import ESRetriever, Neo4jRetriever, HybridRetriever
 from domain.strategies import IntentRoutingStrategy
 from domain.services import PromptBuilder, KnowledgeMatcher, MemoryService
 from application.services import ChatService, SessionService, StreamingService
+from application.services.legacy_streaming_service import LegacyStreamingService
 
 
 # ============= 配置 =============
@@ -322,6 +323,25 @@ async def get_streaming_service() -> StreamingService:
             session_repository
         )
     return _streaming_service
+
+
+_legacy_streaming_service = None
+
+
+async def get_legacy_streaming_service() -> LegacyStreamingService:
+    """获取Legacy流式服务（单例）"""
+    global _legacy_streaming_service
+    if _legacy_streaming_service is None:
+        llm_client = get_llm_client()
+        message_repository = await get_message_repository()
+        session_repository = await get_session_repository()
+
+        _legacy_streaming_service = LegacyStreamingService(
+            llm_client,
+            message_repository,
+            session_repository
+        )
+    return _legacy_streaming_service
 
 
 # ============= 清理函数 =============

@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
 from api.schemas import ChatRequest, ChatResponse, StreamChatRequest
-from api.dependencies import get_chat_service, get_streaming_service
+from api.dependencies import get_chat_service, get_streaming_service, get_legacy_streaming_service
 from application.services import ChatService, StreamingService
+from application.services.legacy_streaming_service import LegacyStreamingService
+from fastapi import BackgroundTasks
 from core.logging import logger
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
@@ -48,23 +50,34 @@ async def chat(
 @router.post("/stream")
 async def chat_stream(
     request: Request,
+    background_tasks: BackgroundTasks,
     session_id: str = Query(..., description="会话ID"),
     user_id: str = Query(..., description="用户ID"),
     scene_id: int = Query(1, description="场景ID: 1=混合查询, 2=仅Neo4j, 3=仅ES"),
-    streaming_service: StreamingService = Depends(get_streaming_service)
+    legacy_streaming_service: LegacyStreamingService = Depends(get_legacy_streaming_service)
 ):
     """
-    流式对话接口（兼容old版本）
+    流式对话接口（完全兼容server2.py）
+
+    使用Legacy流式服务,输出格式为:
+    data:{"content": "...", "message_type": 1}
+
+    message_type说明:
+    - 1: think (思考过程)
+    - 2: data (LLM回答)
+    - 3: knowledge (知识匹配结果)
+    - 4: error (错误信息)
 
     Args:
         request: 原始请求（包含body）
+        background_tasks: 后台任务
         session_id: 会话ID（Query参数）
         user_id: 用户ID（Query参数）
-        scene_id: 场景ID（Query参数）
-        streaming_service: 流式服务（依赖注入）
+        scene_id: 场景ID（1=混合, 2=Neo4j, 3=ES）
+        legacy_streaming_service: Legacy流式服务（依赖注入）
 
     Returns:
-        StreamingResponse: SSE流式响应
+        StreamingResponse: 流式响应
     """
     try:
         # 从body中获取message字段
@@ -74,21 +87,18 @@ async def chat_stream(
         if not query:
             raise HTTPException(status_code=400, detail="用户查询不能为空")
 
-        # 根据scene_id决定是否启用知识检索
-        # scene_id: 1=混合, 2=仅Neo4j, 3=仅ES
-        enable_knowledge = scene_id in [1, 2, 3]  # 都启用知识检索
-
-        stream = streaming_service.chat_stream(
+        # 使用Legacy流式服务
+        stream = legacy_streaming_service.chat_stream_by_scene(
             user_id=user_id,
             session_id=session_id,
             query=query,
-            enable_knowledge=enable_knowledge,
-            top_k=5
+            scene_id=scene_id,
+            background_tasks=background_tasks
         )
 
         return StreamingResponse(
             stream,
-            media_type="text/event-stream",
+            media_type="text/plain; charset=utf-8",  # 与server2.py保持一致
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
