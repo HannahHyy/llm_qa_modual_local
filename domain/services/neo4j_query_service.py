@@ -407,13 +407,18 @@ class Neo4jQueryService:
                 cypher = intent_cypher_map.get(intent_item, "")
 
                 if cypher:
+                    # CRITICAL FIX: Sanitize Cypher to ensure valid JSON string
+                    # Remove newlines and excessive whitespace that break JSON parsing
+                    sanitized_cypher = cypher.replace('\n', ' ').replace('\r', ' ')
+                    sanitized_cypher = ' '.join(sanitized_cypher.split())  # Remove excessive whitespace
+
                     result.append({
                         "intent_item": intent_item,
-                        "cypher": cypher,
+                        "cypher": sanitized_cypher,
                         "examples": examples
                     })
                     logger.info(f"[Neo4j Cypher] 意图: {intent_item}")
-                    logger.info(f"[Neo4j Cypher] 生成: {cypher}")
+                    logger.info(f"[Neo4j Cypher] 生成: {sanitized_cypher}")
 
             return result
 

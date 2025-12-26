@@ -360,9 +360,11 @@ class ESQueryService:
             query_text = f"{origin_query} {rewritten_query}"
 
             # 构建base_filters（参考old代码_build_base_filters）
+            # CRITICAL FIX: 只使用标准过滤，不使用requirement_items和applicability_level过滤
+            # 这些字段作为BM25打分字段，不作为硬过滤条件，避免过滤太严格导致0结果
             filter_clauses = []
 
-            # 1. 标准过滤：identifier 或 source_standard
+            # 1. 标准过滤：identifier 或 source_standard（使用should，满足任一即可）
             identifiers = intent.get("regulation_standards", [])
             standard_names = intent.get("source_standard", [])
             if identifiers or standard_names:
@@ -378,29 +380,9 @@ class ESQueryService:
                     }
                 })
 
-            # 2. requirement_items 过滤
-            entities = intent.get("entities", {})
-            req_items = entities.get("requirement_items", [])
-            if req_items:
-                filter_clauses.append({
-                    "bool": {
-                        "should": [
-                            {"terms": {"requirement_item": req_items}},
-                            {"term": {"requirement_item": ""}}  # 允许空字符串
-                        ],
-                        "minimum_should_match": 1
-                    }
-                })
-
-            # 3. applicability_level 过滤（仅保留明确指定的等级）
-            appl_levels = entities.get("applicability_level", [])
-            if appl_levels:
-                allowed_levels = []
-                for lvl in appl_levels:
-                    if lvl in ("第一级", "第二级", "第三级", "三级", "二级", "一级"):
-                        allowed_levels.append(lvl)
-                if allowed_levels:
-                    filter_clauses.append({"terms": {"applicability_level": allowed_levels}})
+            # 2. requirement_items和applicability_level不作为硬过滤
+            # 它们已经在multi_match的fields中，通过BM25打分来影响排序
+            # 这样可以避免过度过滤导致0结果
 
             # 构建BM25查询（参考old代码_bm25_search）
             es_query = {
@@ -428,13 +410,17 @@ class ESQueryService:
             }
 
             # 调试日志
+            entities = intent.get("entities", {})
+            req_items = entities.get("requirement_items", [])
+            appl_levels = entities.get("applicability_level", [])
+
             logger.info(f"[ES检索DEBUG] 意图{intent.get('num', 0)}")
             logger.info(f"[ES检索DEBUG] 查询文本: {query_text}")
-            logger.info(f"[ES检索DEBUG] 过滤条件数: {len(filter_clauses)}")
+            logger.info(f"[ES检索DEBUG] 过滤条件数: {len(filter_clauses)} (仅标准过滤)")
             logger.info(f"[ES检索DEBUG] regulation_standards: {identifiers}")
             logger.info(f"[ES检索DEBUG] source_standard: {standard_names}")
-            logger.info(f"[ES检索DEBUG] applicability_level: {appl_levels}")
-            logger.info(f"[ES检索DEBUG] requirement_items: {req_items}")
+            logger.info(f"[ES检索DEBUG] applicability_level (BM25打分用): {appl_levels}")
+            logger.info(f"[ES检索DEBUG] requirement_items (BM25打分用): {req_items}")
 
             # 执行查询
             index_name = self.settings.es.knowledge_index
