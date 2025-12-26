@@ -6,7 +6,8 @@
       "Bash(ls:*)",
       "Bash(test:*)",
       "Bash(python -m py_compile:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python -m pytest:*)"
     ]
   }
 }

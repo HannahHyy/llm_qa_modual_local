@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from core.config import Neo4jSettings
 from core.exceptions import Neo4jError
 from core.logging import logger
+from core.retry import retry_sync
 
 
 class Neo4jClient:
@@ -76,6 +77,7 @@ class Neo4jClient:
             raise Neo4jError("Neo4j未连接，请先调用connect()")
         return self._driver
 
+    @retry_sync(max_attempts=3, delay=0.5, backoff=2.0)
     def execute_query(
         self,
         query: str,

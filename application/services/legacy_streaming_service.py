@@ -17,26 +17,12 @@ from fastapi import BackgroundTasks
 
 from domain.strategies.llm_intent_router import LLMIntentRouter
 from domain.services.neo4j_query_service import Neo4jQueryService
+from domain.services.es_query_service import ESQueryService
 from infrastructure.clients.llm_client import LLMClient
 from infrastructure.repositories.session_repository import SessionRepository
 from infrastructure.repositories.message_repository import MessageRepository
 from core.logging import logger
 from core.config import get_settings, get_llm_model_settings, get_system_prompt
-
-
-# 导入旧代码的模块（直接使用）
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "old"))
-
-try:
-    from retrieval_server.intent_parser import EnhancedIntentParser, IntentParseContext
-    from retrieval_server.es_retriever_kbvector import search_clauses
-    from retrieval_server.knowledge_matcher import match_and_format_knowledge
-    LEGACY_MODULES_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"Legacy modules not available: {e}")
-    LEGACY_MODULES_AVAILABLE = False
 
 
 class LegacyStreamingService:
@@ -52,6 +38,8 @@ class LegacyStreamingService:
     def __init__(
         self,
         llm_client: LLMClient,
+        neo4j_query_service: Neo4jQueryService,
+        es_query_service: ESQueryService,
         message_repository: MessageRepository,
         session_repository: SessionRepository,
     ):
@@ -60,10 +48,14 @@ class LegacyStreamingService:
 
         Args:
             llm_client: LLM客户端
+            neo4j_query_service: Neo4j查询服务
+            es_query_service: ES查询服务
             message_repository: 消息仓储
             session_repository: 会话仓储
         """
         self.llm_client = llm_client
+        self.neo4j_service = neo4j_query_service
+        self.es_service = es_query_service
         self.message_repo = message_repository
         self.session_repo = session_repository
         self.settings = get_settings()
@@ -71,9 +63,6 @@ class LegacyStreamingService:
 
         # 初始化LLM路由器
         self.intent_router = LLMIntentRouter(llm_client)
-
-        # 初始化Neo4j查询服务
-        self.neo4j_service = Neo4jQueryService(llm_client)
 
         # 使用配置化的系统提示词
         self.system_prompt = get_system_prompt()
@@ -138,7 +127,7 @@ class LegacyStreamingService:
         save_messages: bool = True
     ) -> AsyncGenerator[bytes, None]:
         """
-        ES查询流式生成器 - 完全复刻server2.py的es_stream_gen
+        ES查询流式生成器 - 使用新的ESQueryService
 
         Args:
             question: 用户问题
@@ -151,181 +140,33 @@ class LegacyStreamingService:
         Yields:
             bytes: 流式输出
         """
-        if not LEGACY_MODULES_AVAILABLE:
-            error_data = {
-                "content": "Legacy模块不可用，请检查配置",
-                "message_type": 4
-            }
-            yield f"data:{json.dumps(error_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            return
-
-        intent_result = None
-        knowledge_results = []
         full_stream_content: List[str] = []
-        llm_raw_content: List[str] = []
 
         try:
-            # 1. 意图识别阶段 - 使用流式输出
-            intent_queue = asyncio.Queue()
-            intent_done = asyncio.Event()
-
-            async def intent_callback(chunk: str):
-                """意图识别流式回调"""
-                if chunk:
-                    await intent_queue.put(chunk)
-                    full_stream_content.append(chunk)
-
-            async def intent_parser_task():
-                """意图解析任务"""
-                nonlocal intent_result
+            # 使用新的ES查询服务
+            async for chunk in self.es_service.query_stream(question, history_msgs):
+                yield chunk
+                # 解析chunk以收集完整内容
                 try:
-                    parser = EnhancedIntentParser()
-                    context = IntentParseContext(
-                        user_query=question,
-                        history_msgs=history_msgs
-                    )
-                    intent_result = await parser.parse(context, stream=True, stream_callback=intent_callback)
-                finally:
-                    intent_done.set()
-                    await intent_queue.put(None)
-
-            # 启动意图解析任务
-            parser_task = asyncio.create_task(intent_parser_task())
-            think_start_data = {
-                "content": "<think>开始对用户的提问进行深入解析...\n",
-                "message_type": 1
-            }
-            yield f"data:{json.dumps(think_start_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            full_stream_content.append(think_start_data["content"])
-
-            # 实时输出意图识别过程
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(intent_queue.get(), timeout=0.1)
-                    if chunk is None:
-                        break
-                    chunk_data = {
-                        "content": chunk,
-                        "message_type": 1
-                    }
-                    yield f"data:{json.dumps(chunk_data, ensure_ascii=False)}\n\n".encode("utf-8")
-                    full_stream_content.append(chunk)
-                except asyncio.TimeoutError:
-                    if intent_done.is_set():
-                        try:
-                            chunk = intent_queue.get_nowait()
-                            if chunk is None:
-                                break
-                            chunk_data = {
-                                "content": chunk,
-                                "message_type": 1
-                            }
-                            yield f"data:{json.dumps(chunk_data, ensure_ascii=False)}\n\n".encode("utf-8")
-                            full_stream_content.append(chunk)
-                        except asyncio.QueueEmpty:
-                            break
-                    continue
-
-            # 输出思考过程结束
-            think_end_content = "\n完成对用户问题的详细解析分析。正在检索知识库中的内容并生成回答，请稍候....\n</think>\n"
-            think_end_data = {
-                "content": think_end_content,
-                "message_type": 1
-            }
-            yield f"data:{json.dumps(think_end_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            full_stream_content.append(think_end_content)
-            llm_raw_content.append(str(intent_result))
-
-            # 等待意图解析完成
-            await parser_task
-
-            # 2. 知识检索
-            knowledge_results = search_clauses(intent_result) if intent_result else []
-            knowledge = "\n".join([
-                getattr(item, "embedding_content", "")
-                for item in knowledge_results
-            ])
-            if knowledge:
-                knowledge = knowledge[:60000]
-
-            # 3. 构建prompt
-            prompt = self._build_enhanced_prompt(history_msgs, question, knowledge)
-
-            # 4. LLM响应流
-            data_start_data = {
-                "content": "<data>\n",
-                "message_type": 2
-            }
-            yield f"data:{json.dumps(data_start_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            full_stream_content.append(data_start_data["content"])
-
-            async for chunk in self.llm_client.async_stream_chat(
-                prompt=prompt,
-                model=self.model_settings.chat_generation_model,
-                max_tokens=self.model_settings.chat_generation_max_tokens,
-                temperature=self.model_settings.chat_generation_temperature,
-                system_prompt=self.system_prompt,
-            ):
-                if chunk:
-                    llm_raw_content.append(chunk)
-                    full_stream_content.append(chunk)
-                    chunk_data = {
-                        "content": chunk,
-                        "message_type": 2
-                    }
-                    yield f"data:{json.dumps(chunk_data, ensure_ascii=False)}\n\n".encode("utf-8")
-                    await asyncio.sleep(0.01)
-
-            data_end_data = {
-                "content": "\n</data>",
-                "message_type": 2
-            }
-            yield f"data:{json.dumps(data_end_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            full_stream_content.append(data_end_data["content"])
-
-            # 5. 知识匹配和输出
-            no_standard_query = False
-            if intent_result and isinstance(intent_result, dict):
-                no_standard_query = intent_result.get("no_standard_query", False)
-
-            if llm_raw_content and knowledge_results and not no_standard_query:
-                full_reply = "".join(llm_raw_content)
-                try:
-                    matched_knowledge = await match_and_format_knowledge(
-                        llm_output=full_reply,
-                        knowledge_results=knowledge_results,
-                        max_results=2
-                    )
-                    if matched_knowledge:
-                        knowledge_dict = {
-                            "title": "相关的标准规范原文内容",
-                            "table_list": matched_knowledge
-                        }
-                        knowledge_data = {
-                            "content": json.dumps(knowledge_dict, ensure_ascii=False),
-                            "message_type": 3
-                        }
-                        yield f"data:{json.dumps(knowledge_data, ensure_ascii=False)}\n\n".encode("utf-8")
-
-                        full_stream_content.append("<knowledge>")
-                        full_stream_content.append("相关的标准规范原文内容")
-                        for item in matched_knowledge:
-                            full_stream_content.append(item)
-                        full_stream_content.append("</knowledge>")
-
-                except Exception as e:
-                    logger.error(f"[知识匹配] 错误: {e}")
+                    # chunk格式: data:{...}\n\n
+                    chunk_str = chunk.decode("utf-8")
+                    if chunk_str.startswith("data:"):
+                        json_str = chunk_str[5:].strip()
+                        data = json.loads(json_str)
+                        content = data.get("content", "")
+                        full_stream_content.append(content)
+                except:
+                    pass
 
         except Exception as e:
-            error_msg = f"流式处理错误: {str(e)}"
-            logger.error(f"[ES流式] {error_msg}")
-            error_content = f"<data>\n抱歉，处理您的请求时出现错误: {error_msg}\n</data>"
+            error_msg = f"ES查询错误: {str(e)}"
+            logger.error(f"[ES流式] {error_msg}", exc_info=True)
             error_data = {
-                "content": error_content,
+                "content": f"<data>\n抱歉，处理您的请求时出现错误: {error_msg}\n</data>",
                 "message_type": 4
             }
             yield f"data:{json.dumps(error_data, ensure_ascii=False)}\n\n".encode("utf-8")
-            full_stream_content.append(error_content)
+            full_stream_content.append(error_data["content"])
 
         finally:
             # 异步保存消息

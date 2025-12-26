@@ -11,6 +11,7 @@ import os
 from core.config import ESSettings
 from core.exceptions import ElasticsearchError
 from core.logging import get_logger
+from core.retry import retry_sync
 
 logger = get_logger("ESClient")
 
@@ -55,6 +56,7 @@ class ESClient:
                 if value:
                     os.environ[key] = value
 
+    @retry_sync(max_attempts=3, delay=0.5, backoff=2.0)
     def search(
         self,
         index: str,

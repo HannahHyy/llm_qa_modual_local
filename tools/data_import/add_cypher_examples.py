@@ -1,0 +1,167 @@
+"""
+添加Cypher示例到ES索引
+
+这个脚本向qa_system索引添加示例Cypher查询，用于Neo4j意图解析时的示例匹配
+"""
+
+import sys
+import os
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from infrastructure.clients.es_client import ESClient
+from core.config import get_settings
+from core.logging import logger
+
+
+def add_cypher_examples():
+    """添加Cypher示例到ES的qa_system索引"""
+
+    settings = get_settings()
+    es_client = ESClient(settings.es)
+
+    # Cypher示例数据（用于Neo4j意图解析）
+    examples = [
+        {
+            "intent": "查询单位建设的网络",
+            "example": "河北单位建设了哪些网络?",
+            "cypher": "MATCH (u:单位)-[:拥有]->(n:网络) WHERE u.name CONTAINS '河北' RETURN u.name, n.name",
+            "description": "查询特定单位拥有的网络资源"
+        },
+        {
+            "intent": "查询所有单位网络关系",
+            "example": "哪些单位建设了网络?",
+            "cypher": "MATCH (u:单位)-[:拥有]->(n:网络) RETURN u.name, n.name",
+            "description": "查询所有单位与网络的关系"
+        },
+        {
+            "intent": "查询单位的系统",
+            "example": "北京单位有哪些系统?",
+            "cypher": "MATCH (u:单位)-[:拥有]->(s:系统) WHERE u.name CONTAINS '北京' RETURN u.name, s.name",
+            "description": "查询特定单位拥有的系统"
+        },
+        {
+            "intent": "查询网络部署的安全产品",
+            "example": "网络的安全产品有哪些?",
+            "cypher": "MATCH (n:网络)-[:部署]->(s:安全产品) RETURN n.name, s.name",
+            "description": "查询网络上部署的安全产品"
+        },
+        {
+            "intent": "查询单位网络关系详情",
+            "example": "查询单位和网络的关系",
+            "cypher": "MATCH (u:单位)-[r:拥有]->(n:网络) RETURN u.name, type(r), n.name LIMIT 10",
+            "description": "查询单位与网络之间的关系类型"
+        },
+        {
+            "intent": "查询系统部署的网络",
+            "example": "系统部署在哪些网络上?",
+            "cypher": "MATCH (s:系统)<-[:包含]-(n:网络) RETURN s.name, n.name",
+            "description": "查询系统所在的网络"
+        },
+        {
+            "intent": "按地区查询单位",
+            "example": "河北省有哪些单位?",
+            "cypher": "MATCH (u:单位) WHERE u.address CONTAINS '河北' OR u.name CONTAINS '河北' RETURN u.name, u.type",
+            "description": "按地区筛选单位"
+        },
+        {
+            "intent": "查询集成商信息",
+            "example": "查询集成商信息",
+            "cypher": "MATCH (t:集成商) RETURN t.name, t.contact LIMIT 10",
+            "description": "查询集成商基本信息"
+        },
+        {
+            "intent": "查询网络属性",
+            "example": "网络的IP地址范围是什么?",
+            "cypher": "MATCH (n:网络) RETURN n.name, n.ip_range LIMIT 10",
+            "description": "查询网络的IP地址范围属性"
+        },
+        {
+            "intent": "查询单位系统关系",
+            "example": "单位和系统的关系",
+            "cypher": "MATCH (u:单位)-[:拥有]->(s:系统) RETURN u.name, s.name LIMIT 10",
+            "description": "查询单位与系统的拥有关系"
+        },
+        {
+            "intent": "查询设备信息",
+            "example": "有哪些防火墙设备?",
+            "cypher": "MATCH (d:设备) WHERE d.type CONTAINS '防火墙' RETURN d.name, d.model, d.ip",
+            "description": "查询特定类型的设备信息"
+        },
+        {
+            "intent": "查询集成商服务的单位",
+            "example": "哪些集成商为某单位提供服务?",
+            "cypher": "MATCH (t:集成商)-[:集成]->(u:单位) RETURN t.name, u.name",
+            "description": "查询集成商与单位的服务关系"
+        }
+    ]
+
+    # ✅ 正确的索引名称：qa_system（Cypher示例库）
+    index = settings.es.cypher_index  # qa_system
+
+    logger.info(f"开始向索引 {index} 添加 {len(examples)} 个Cypher示例")
+
+    # 检查索引是否存在，不存在则创建
+    try:
+        es_client.client.indices.get(index=index)
+        logger.info(f"索引 {index} 已存在")
+    except Exception:
+        logger.warning(f"索引 {index} 不存在，正在创建...")
+        try:
+            es_client.client.indices.create(
+                index=index,
+                body={
+                    "mappings": {
+                        "properties": {
+                            "intent": {"type": "text"},
+                            "example": {"type": "text"},
+                            "cypher": {"type": "text"},
+                            "description": {"type": "text"}
+                        }
+                    }
+                }
+            )
+            logger.info(f"索引 {index} 创建成功")
+        except Exception as e:
+            logger.error(f"创建索引失败: {e}")
+            return
+
+    # 添加示例
+    success_count = 0
+    for i, example in enumerate(examples, 1):
+        try:
+            doc_id = f"cypher_example_{i}"
+            es_client.index_document(
+                index=index,
+                document=example,
+                doc_id=doc_id
+            )
+            logger.info(f"✅ 添加示例 {i}/{len(examples)}: {example['example'][:40]}...")
+            success_count += 1
+        except Exception as e:
+            logger.error(f"❌ 添加示例 {i} 失败: {e}")
+
+    logger.info(f"✅ 完成! 成功添加 {success_count}/{len(examples)} 个Cypher示例")
+
+    # 验证
+    try:
+        result = es_client.search(
+            index=index,
+            query={"match_all": {}},
+            size=1
+        )
+        total = result.get("hits", {}).get("total", {}).get("value", 0)
+        logger.info(f"📊 索引 {index} 当前总文档数: {total}")
+    except Exception as e:
+        logger.warning(f"⚠️ 验证索引失败: {e}")
+
+
+if __name__ == "__main__":
+    try:
+        add_cypher_examples()
+    except Exception as e:
+        logger.error(f"脚本执行失败: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

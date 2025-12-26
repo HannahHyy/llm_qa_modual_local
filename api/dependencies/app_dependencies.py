@@ -20,7 +20,7 @@ from infrastructure.repositories import (
 from domain.parsers import ESIntentParser, Neo4jIntentParser
 from domain.retrievers import ESRetriever, Neo4jRetriever, HybridRetriever
 from domain.strategies import IntentRoutingStrategy
-from domain.services import PromptBuilder, KnowledgeMatcher, MemoryService
+from domain.services import PromptBuilder, KnowledgeMatcher, MemoryService, Neo4jQueryService, ESQueryService
 from application.services import ChatService, SessionService, StreamingService
 from application.services.legacy_streaming_service import LegacyStreamingService
 
@@ -260,6 +260,33 @@ async def get_memory_service() -> MemoryService:
     return _memory_service
 
 
+_neo4j_query_service = None
+
+
+def get_neo4j_query_service() -> Neo4jQueryService:
+    """获取Neo4j查询服务（单例）"""
+    global _neo4j_query_service
+    if _neo4j_query_service is None:
+        llm_client = get_llm_client()
+        neo4j_client = get_neo4j_client()
+        es_client = get_es_client()
+        _neo4j_query_service = Neo4jQueryService(llm_client, neo4j_client, es_client)
+    return _neo4j_query_service
+
+
+_es_query_service = None
+
+
+def get_es_query_service() -> ESQueryService:
+    """获取ES查询服务（单例）"""
+    global _es_query_service
+    if _es_query_service is None:
+        llm_client = get_llm_client()
+        es_client = get_es_client()
+        _es_query_service = ESQueryService(llm_client, es_client)
+    return _es_query_service
+
+
 # ============= 应用层 - 服务 =============
 
 _chat_service = None
@@ -333,11 +360,15 @@ async def get_legacy_streaming_service() -> LegacyStreamingService:
     global _legacy_streaming_service
     if _legacy_streaming_service is None:
         llm_client = get_llm_client()
+        neo4j_query_service = get_neo4j_query_service()
+        es_query_service = get_es_query_service()
         message_repository = await get_message_repository()
         session_repository = await get_session_repository()
 
         _legacy_streaming_service = LegacyStreamingService(
             llm_client,
+            neo4j_query_service,
+            es_query_service,
             message_repository,
             session_repository
         )

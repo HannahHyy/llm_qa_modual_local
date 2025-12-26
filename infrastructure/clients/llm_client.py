@@ -9,6 +9,7 @@ from openai import OpenAI, AsyncOpenAI
 from core.config import LLMSettings
 from core.exceptions import LLMClientError
 from core.logging import logger
+from core.retry import retry_sync, retry_async
 
 
 class LlmConfig:
@@ -56,6 +57,7 @@ class LLMClient:
 
         logger.info(f"LLM客户端初始化成功: {self.base_url}, model={self.model_name}")
 
+    @retry_sync(max_attempts=3, delay=1.0, backoff=2.0)
     def sync_nonstream_chat(
         self,
         prompt: str,
@@ -140,6 +142,7 @@ class LLMClient:
             logger.error(f"LLM同步流式调用错误: {str(e)}")
             raise LLMClientError(f"LLM流式调用失败: {str(e)}")
 
+    @retry_async(max_attempts=3, delay=1.0, backoff=2.0)
     async def async_nonstream_chat(
         self,
         prompt: str,

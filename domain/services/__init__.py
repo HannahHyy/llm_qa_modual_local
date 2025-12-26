@@ -4,10 +4,12 @@ from .prompt_builder import PromptBuilder
 from .knowledge_matcher import KnowledgeMatcher
 from .memory_service import MemoryService
 from .neo4j_query_service import Neo4jQueryService
+from .es_query_service import ESQueryService
 
 __all__ = [
     "PromptBuilder",
     "KnowledgeMatcher",
     "MemoryService",
     "Neo4jQueryService",
+    "ESQueryService",
 ]
