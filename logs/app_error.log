@@ -1,19 +1,70 @@
-2025-12-26 13:21:03 | ERROR    | domain.services.neo4j_query_service:_parse_intent_only_with_stream:215 | [Neo4j意图识别] 失败: 'LLMModelSettings' object has no attribute 'neo4j_model'
+2025-12-26 13:43:41 | INFO     | api.middleware.logging_middleware:dispatch:33 | 请求开始: [1766727821653] POST /api/chat/stream client=127.0.0.1
+2025-12-26 13:43:42 | INFO     | infrastructure.clients.llm_client:__init__:58 | LLM客户端初始化成功: https://dashscope.aliyuncs.com/compatible-mode/v1, model=deepseek-v3
+2025-12-26 13:43:43 | INFO     | infrastructure.clients.neo4j_client:connect:45 | Neo4j连接成功: bolt://localhost:7687
+2025-12-26 13:43:43 | INFO     | infrastructure.clients.es_client:connect:49 | Elasticsearch连接成功: http://localhost:9200
+2025-12-26 13:43:43 | INFO     | infrastructure.clients.redis_client:connect:45 | Redis连接成功: localhost:6379
+2025-12-26 13:43:43 | INFO     | infrastructure.clients.mysql_client:connect:44 | MySQL连接成功: localhost:3306/chatdb
+2025-12-26 13:43:43 | INFO     | api.middleware.logging_middleware:dispatch:49 | 请求完成: [1766727821653] POST /api/chat/stream status=200 time=1496.64ms
+INFO:     127.0.0.1:59308 - "POST /api/chat/stream?session_id=ee2cd465-7f9e-47d6-a361-1864d6146d91&user_id=111111 HTTP/1.1" 200 OK
+2025-12-26 13:43:43 | INFO     | infrastructure.repositories.message_repository:get_messages:74 | [Redis] 获取消息成功: count=14
+2025-12-26 13:43:43 | INFO     | domain.strategies.llm_intent_router:route:125 | [LLM路由] 第1次尝试...
+2025-12-26 13:43:48 | INFO     | domain.strategies.llm_intent_router:route:158 | [LLM路由] 决策: hybrid, 理由: 当前用户查询包含两个部分：第一部分是‘河 北单位建设了哪些网络’，涉及具体单位的业务实体信息，需要从neo4j中查询实际的网络建设情况；第二部分是‘等保三级网络建设要求是什么’，属于网络安全等级保护的 法规标准内容，需从es中检索相关规范条款。由于该查询同时涉及具体业务数据和法规要求，并可能隐含将河北单位的实际建设情况与等保三级要求进行对比分析的需求（ 例如判断是否合规），因此需要结合两个知识库的信息进行综合回答，符合hybrid场景的特征。
+2025-12-26 13:44:03 | INFO     | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 意图识别结果: [{'intent_item': '查询河北地区的单位 所建设的网络系统'}, {'intent_item': '查询等保三级网络所需满足的建设要求和安全规范'}]
+2025-12-26 13:44:03 | INFO     | domain.services.neo4j_query_service:_match_examples_from_es:262 | [Neo4j示例匹配] 为意图'查询河北地区的单位所建设的网 络系统'匹配到 1 个示例
+2025-12-26 13:44:03 | INFO     | domain.services.neo4j_query_service:query_stream:506 | [Neo4j查询] 意图: 查询河北地区的单位所建设的网络系统, 匹配示例 数: 1
+2025-12-26 13:44:03 | INFO     | domain.services.neo4j_query_service:_match_examples_from_es:262 | [Neo4j示例匹配] 为意图'查询等保三级网络所需满足的建 设要求和安全规范'匹配到 1 个示例
+2025-12-26 13:44:03 | INFO     | domain.services.neo4j_query_service:query_stream:506 | [Neo4j查询] 意图: 查询等保三级网络所需满足的建设要求和安全规范, 匹配示例数: 1
+2025-12-26 13:44:11 | INFO     | domain.services.neo4j_query_service:_generate_cyphers_batch_with_stream:360 | [Neo4j Cypher生成] LLM输出: 分析思路：
 
-2025-12-26 13:21:03 | ERROR    | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 未获取到有效的意图列表
+- 意图1：查询“河北地区的单位所建设的网络系统”。根据图结构，单位与网络之间的关系是“拥有”（:拥有），起始节点为“单位”，目标节点为“网络”。需通过单位的 name 属性包含“河北”来筛选单位，然后遍历其拥有的网络。参考示例中使用了 :UNIT_NET 关系，但根据数据库结构定义，正确的关系应为 :拥有。因此应使用正确的命名关系 ，并返回网络的相关属性。
 
-2025-12-26 13:21:17 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
+- 意图2：查询“等保三级网络所需满足的建设要求和安全规范”。该问题涉及“等保三级”的安全规范或要求，但在提供的Neo4j图数据模型中，并未定义任何关于“等级保护” 、“合规要求”、“规范”或“标准”相关的节点或关系类型（如无“Requirement”、“Standard”等节点）。现有节点中也没有存储如“security_level”、“compliance”等属性。因此，无法基于当前图结构生成有效的Cypher查询语句。
 
-2025-12-26 13:21:17 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
+综上：
+- 意图1 可生成符合图结构的 Cypher 语句。
+- 意图2 因图结构中缺乏相关实体和属性，无法生成有效查询，cypher 字段留空。
 
-2025-12-26 13:21:25 | ERROR    | domain.services.neo4j_query_service:_parse_intent_only_with_stream:215 | [Neo4j意图识别] 失败: 'LLMModelSettings' object has no attribute 'neo4j_model'
+3.以下是json格式的解析结果：
+[{"i...
+2025-12-26 13:44:11 | WARNING  | domain.services.neo4j_query_service:extract:54 | [JSON提取] 提取失败: Unterminated string starting at: line 1 column 49 (char 48)
+2025-12-26 13:44:11 | WARNING  | domain.services.neo4j_query_service:_generate_cyphers_batch_with_stream:365 | [Neo4j Cypher生成] 未解析到结果
+2025-12-26 13:44:38 | INFO     | domain.services.es_query_service:_search_single_intent:459 | [ES检索] 意图1 BM25检索到 494 条结果
+2025-12-26 13:44:38 | INFO     | domain.services.es_query_service:_search_single_intent:459 | [ES检索] 意图2 BM25检索到 0 条结果
+2025-12-26 13:44:44 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=user
+2025-12-26 13:44:44 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699084871
+2025-12-26 13:44:44 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=assistant
+2025-12-26 13:44:45 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699084933
+2025-12-26 13:44:45 | INFO     | api.middleware.logging_middleware:dispatch:33 | 请求开始: [1766727885180] POST /api/chat/stream client=127.0.0.1
+2025-12-26 13:44:45 | INFO     | api.middleware.logging_middleware:dispatch:49 | 请求完成: [1766727885180] POST /api/chat/stream status=200 time=0.00ms
+2025-12-26 13:44:45 | INFO     | infrastructure.repositories.message_repository:get_messages:74 | [Redis] 获取消息成功: count=16
+2025-12-26 13:44:45 | INFO     | domain.strategies.llm_intent_router:route:125 | [LLM路由] 第1次尝试...
+INFO:     127.0.0.1:61128 - "POST /api/chat/stream?session_id=ee2cd465-7f9e-47d6-a361-1864d6146d91&user_id=111111 HTTP/1.1" 200 OK
+2025-12-26 13:44:49 | INFO     | domain.strategies.llm_intent_router:route:158 | [LLM路由] 决策: neo4j, 理由: 当前查询为'河北单位建设了哪些网络?'，重点在于获取特定单位（河北单位）所建设的具体网络信息，这属于具体的业务实体数据，涉及网络架构和部署情况。根据知识库说明，此类关于单位、网络、系统等具体业务 信息应由neo4j业务图谱库存储和提供。该问题不涉及法规标准内容，也不需要与法规要求进行对比分析，因此无需使用es或hybrid。同时，该问题并非闲聊或一般性问题，而是明确指向具体业务数据，故不应选择none。
+2025-12-26 13:44:59 | INFO     | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 意图识别结果: [{'intent_item': '查找位于河北省的单 位所建设的网络'}]
+2025-12-26 13:44:59 | INFO     | domain.services.neo4j_query_service:_match_examples_from_es:262 | [Neo4j示例匹配] 为意图'查找位于河北省的单位所建设的 网络'匹配到 1 个示例
+2025-12-26 13:44:59 | INFO     | domain.services.neo4j_query_service:query_stream:506 | [Neo4j查询] 意图: 查找位于河北省的单位所建设的网络, 匹配示例数: 1
+2025-12-26 13:45:10 | INFO     | domain.services.neo4j_query_service:_generate_cyphers_batch_with_stream:360 | [Neo4j Cypher生成] LLM输出: 分析思路：
 
-2025-12-26 13:21:25 | ERROR    | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 未获取到有效的意图列表
-
-2025-12-26 13:22:28 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
-
-2025-12-26 13:32:01 | ERROR    | core.retry:wrapper:49 | [重试] search 失败，已达最大尝试次数 3
-2025-12-26 13:33:24 | ERROR    | core.retry:wrapper:49 | [重试] search 失败，已达最大尝试次数 3
-
-2025-12-26 13:34:07 | ERROR    | core.retry:wrapper:49 | [重试] search 失败，已达最大尝试次数 3
-
+- 用户意图是查找位于河北省的单位所建设的网络。
+- 根据图数据库结构，“单位”节点具有属性 `name` 和 `address`，其中可通过 `address` 或 `name` 判断是否属于“河北省”。
+- 关系“拥有”连接“单位”与“网络”，表示单位拥有的网络。根据用户示例中的Cypher语句，实际使用的关系为 `:UNIT_NET`，且起始节点为 `Unit`，目标节点为 `Netname`（即网络节点）。
+- 示例中使用了 `CONTAINS "河北单位"` 来匹配单位名称，但用户问题为“河北单位”，更合理的解释应为“位于河北的单位”。考虑到可能存在“河北”、“河北省”、“石家庄 市”等地址信息，优先使用 `address` 属性进行模糊匹配更为准确。
+- 但根据提示：必须严格按照提供的示例语法模式来生成，且不能使用未定义的关系或属性。示例中使用的是 `:UNIT_NET` 关系，节点标签为 `Unit` 和 `Netname`，这与描述中的“网络”节点可能存在标签命名差异。结合示例，应采用 `Netname` 作为网络节点标签。
+- 因此，应使用 `MATCH ...
+2025-12-26 13:45:10 | WARNING  | domain.services.neo4j_query_service:extract:54 | [JSON提取] 提取失败: Unterminated string starting at: line 4 column 15 (char 59)
+2025-12-26 13:45:10 | WARNING  | domain.services.neo4j_query_service:_generate_cyphers_batch_with_stream:365 | [Neo4j Cypher生成] 未解析到结果
+2025-12-26 13:45:14 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=user
+2025-12-26 13:45:14 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699114451
+2025-12-26 13:45:14 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=assistant
+2025-12-26 13:45:14 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699114513
+2025-12-26 13:45:18 | INFO     | api.middleware.logging_middleware:dispatch:33 | 请求开始: [1766727918247] POST /api/chat/stream client=127.0.0.1
+2025-12-26 13:45:18 | INFO     | api.middleware.logging_middleware:dispatch:49 | 请求完成: [1766727918247] POST /api/chat/stream status=200 time=4.00ms
+2025-12-26 13:45:18 | INFO     | infrastructure.repositories.message_repository:get_messages:74 | [Redis] 获取消息成功: count=18
+INFO:     127.0.0.1:61128 - "POST /api/chat/stream?session_id=ee2cd465-7f9e-47d6-a361-1864d6146d91&user_id=111111 HTTP/1.1" 200 OK
+2025-12-26 13:45:18 | INFO     | domain.strategies.llm_intent_router:route:125 | [LLM路由] 第1次尝试...
+2025-12-26 13:45:22 | INFO     | domain.strategies.llm_intent_router:route:158 | [LLM路由] 决策: es, 理由: 用户查询‘等保三级网络建设要求是什么？’明确指向网络安全等级保护第三级的建设标准和规范，属于对法规、标准类内容的咨询。该问题不涉及具体单位或系统的业务数据（如网络架构、设备配置等），因此无需查询neo4j；也不需要将某个具体网络的实际情况与等保要求进行比对，故不选择hybrid；同时，该问题具有明确的专业知识需求，不属于闲聊或一般性问题，因此排除none。综上 ，应选择法规知识库es来检索相关的等保三级建设要求。
+2025-12-26 13:45:35 | INFO     | domain.services.es_query_service:_search_single_intent:459 | [ES检索] 意图1 BM25检索到 0 条结果
+2025-12-26 13:45:37 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=user
+2025-12-26 13:45:37 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699137877
+2025-12-26 13:45:37 | INFO     | infrastructure.repositories.message_repository:append_message:164 | [Redis] 消息追加成功: role=assistant
+2025-12-26 13:45:37 | INFO     | infrastructure.repositories.message_repository:append_message:186 | [ES] 消息索引成功: message_id=msg_ee2cd465-7f9e-47d6-a361-1864d6146d91_1766699137899
