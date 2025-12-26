@@ -21,6 +21,7 @@ from .app_dependencies import (
     get_chat_service,
     get_session_service,
     get_streaming_service,
+    get_legacy_streaming_service,
     cleanup_dependencies
 )
 
@@ -45,5 +46,6 @@ __all__ = [
     "get_chat_service",
     "get_session_service",
     "get_streaming_service",
+    "get_legacy_streaming_service",
     "cleanup_dependencies",
 ]
