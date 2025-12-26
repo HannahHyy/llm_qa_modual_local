@@ -21,7 +21,7 @@ class JsonExtractor:
 
     def extract(self, text: str) -> Optional[List]:
         """
-        从文本中提取JSON列表
+        从文本中提取JSON列表 - 增强版，更健壮
 
         查找标识符：'3.以下是json格式的解析结果：'之后的JSON
         """
@@ -36,20 +36,35 @@ class JsonExtractor:
                 if len(parts) > 1:
                     json_part = parts[1].strip()
 
-                    # 提取JSON数组
-                    match = re.search(r'\[(.*?)\]', json_part, re.DOTALL)
+                    # 调试：显示提取到的JSON部分长度
+                    logger.info(f"[JSON提取DEBUG] 提取到JSON部分长度: {len(json_part)}")
+                    logger.info(f"[JSON提取DEBUG] JSON前100字符: {json_part[:100]}")
+
+                    # 方法1：使用非贪婪匹配提取JSON数组
+                    match = re.search(r'\[.*?\]', json_part, re.DOTALL)
+                    if not match:
+                        # 方法2：使用贪婪匹配（可能包含嵌套）
+                        match = re.search(r'\[[\s\S]*\]', json_part)
+
                     if match:
-                        json_str = '[' + match.group(1) + ']'
+                        json_str = match.group(0)
+                        logger.info(f"[JSON提取DEBUG] 匹配到JSON字符串长度: {len(json_str)}")
+                        logger.info(f"[JSON提取DEBUG] JSON字符串: {json_str[:200]}...")
                         return json.loads(json_str)
 
             # 尝试直接解析整个文本
-            match = re.search(r'\[(.*?)\]', text, re.DOTALL)
+            match = re.search(r'\[[\s\S]*\]', text)
             if match:
-                json_str = '[' + match.group(1) + ']'
+                json_str = match.group(0)
                 return json.loads(json_str)
 
+            logger.warning(f"[JSON提取] 未找到JSON数组")
             return None
 
+        except json.JSONDecodeError as e:
+            logger.warning(f"[JSON提取] JSON解析失败: {e}")
+            logger.warning(f"[JSON提取] 尝试解析的文本前500字符: {text[:500]}")
+            return None
         except Exception as e:
             logger.warning(f"[JSON提取] 提取失败: {e}")
             return None

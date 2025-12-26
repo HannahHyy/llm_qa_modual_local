@@ -427,6 +427,15 @@ class ESQueryService:
                 "min_score": config.get("bm25_threshold", 0.7)
             }
 
+            # 调试日志
+            logger.info(f"[ES检索DEBUG] 意图{intent.get('num', 0)}")
+            logger.info(f"[ES检索DEBUG] 查询文本: {query_text}")
+            logger.info(f"[ES检索DEBUG] 过滤条件数: {len(filter_clauses)}")
+            logger.info(f"[ES检索DEBUG] regulation_standards: {identifiers}")
+            logger.info(f"[ES检索DEBUG] source_standard: {standard_names}")
+            logger.info(f"[ES检索DEBUG] applicability_level: {appl_levels}")
+            logger.info(f"[ES检索DEBUG] requirement_items: {req_items}")
+
             # 执行查询
             index_name = self.settings.es.knowledge_index
             response = self.es_client.search(
