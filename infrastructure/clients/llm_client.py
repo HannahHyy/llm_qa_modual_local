@@ -227,6 +227,43 @@ class LLMClient:
             logger.error(f"LLM异步流式调用错误: {str(e)}")
             raise LLMClientError(f"LLM流式调用失败: {str(e)}")
 
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        max_tokens: int = 40000,
+        temperature: float = 0.7
+    ) -> AsyncGenerator[str, None]:
+        """
+        异步流式对话(接受messages列表)
+
+        Args:
+            messages: 消息列表,格式: [{"role": "user", "content": "..."}]
+            model: 模型名称
+            max_tokens: 最大token数
+            temperature: 温度参数
+
+        Yields:
+            str: LLM响应内容片段
+        """
+        try:
+            response = await self.async_client.chat.completions.create(
+                model=model or self.model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+
+            async for chunk in response:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+
+        except Exception as e:
+            logger.error(f"LLM流式对话错误: {str(e)}")
+            raise LLMClientError(f"LLM流式对话失败: {str(e)}")
+
     async def chat_completion_stream(
         self,
         messages: List[Dict[str, str]],

@@ -157,6 +157,15 @@ class Neo4jClient:
                 details={"query": query, "parameters": parameters, "error": str(e)}
             )
 
+    def is_connected(self) -> bool:
+        """
+        检查是否已连接
+
+        Returns:
+            bool: 是否已连接
+        """
+        return self._driver is not None
+
     def ping(self) -> bool:
         """
         测试连接
