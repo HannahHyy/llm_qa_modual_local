@@ -219,7 +219,7 @@ class Neo4jQueryService:
 
     async def _match_examples_from_es(self, intent_item: str, top_k: int = 1) -> List[Dict]:
         """
-        从ES中匹配Cypher示例
+        从ES中匹配Cypher示例 - 基于old代码逻辑
 
         Args:
             intent_item: 意图描述
@@ -229,38 +229,41 @@ class Neo4jQueryService:
             示例列表: [{"question": "...", "answer": "Cypher语句", "score": 0.9}]
         """
         try:
-            # 使用ES的向量相似度搜索（假设ES中有qa_pairs索引存储Cypher示例）
-            # 这里简化实现，实际应该调用专门的ES向量搜索
-            query = {
-                "query": {
-                    "match": {
-                        "question": intent_item
-                    }
-                },
-                "size": top_k
+            # 使用BM25文本匹配搜索Cypher示例
+            # 注意：query参数应该是查询DSL的内部结构（不包含外层"query"键）
+            query_dsl = {
+                "match": {
+                    "question": intent_item
+                }
             }
 
-            # 搜索Cypher示例索引
-            results = self.es_client.search(
-                index="cypher_examples",  # Cypher示例索引
-                query_dsl=query,
+            # 搜索Cypher示例索引（使用配置中的索引名）
+            index_name = self.settings.es.cypher_index  # qa_system索引
+            response = self.es_client.search(
+                index=index_name,
+                query=query_dsl,  # 传递查询DSL内部结构
                 size=top_k
             )
 
+            # 解析响应（response是完整的ES响应字典）
             examples = []
-            for hit in results:
+            hits = response.get("hits", {}).get("hits", [])
+            for hit in hits:
                 source = hit.get("_source", {})
-                answer = source.get("cypher", "").strip().replace(' ', '')
+                # 从_source中获取cypher字段（而非answer字段）
+                answer = source.get("cypher", source.get("answer", ""))
+                answer = answer.strip().replace(' ', '')
                 examples.append({
                     'question': source.get('question', ''),
                     'answer': answer,
                     'score': hit.get('_score', 0.0)
                 })
 
+            logger.info(f"[Neo4j示例匹配] 为意图'{intent_item}'匹配到 {len(examples)} 个示例")
             return examples
 
         except Exception as e:
-            logger.warning(f"[Neo4j示例匹配] ES匹配失败: {e}")
+            logger.warning(f"[Neo4j示例匹配] ES匹配失败: {e}", exc_info=True)
             return []
 
     # ==================== 阶段3：批量Cypher生成 ====================

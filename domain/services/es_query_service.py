@@ -347,67 +347,92 @@ class ESQueryService:
 
     async def _search_single_intent(self, intent: Dict, origin_query: str) -> List[KnowledgeItem]:
         """
-        检索单个意图
+        检索单个意图 - 基于old代码的完整逻辑重写
 
-        使用BM25+向量混合检索
+        使用BM25检索（向量检索需embedding服务，暂时使用BM25）
         """
         try:
             retrieval_type = intent.get("retrieval_type", "hybrid_search")
             config = self.retrieval_config.get(retrieval_type, self.retrieval_config["hybrid_search"])
 
-            # 构建ES查询
-            query_text = intent.get("rewritten_query", origin_query)
+            # 构建查询文本
+            rewritten_query = intent.get("rewritten_query", "")
+            query_text = f"{origin_query} {rewritten_query}"
 
-            # 构建must条件（硬过滤）
-            must_conditions = []
+            # 构建base_filters（参考old代码_build_base_filters）
+            filter_clauses = []
 
-            # 添加法规标准过滤
-            regulation_standards = intent.get("regulation_standards", [])
-            if regulation_standards:
-                must_conditions.append({
-                    "terms": {
-                        "source_standard.keyword": regulation_standards
+            # 1. 标准过滤：identifier 或 source_standard
+            identifiers = intent.get("regulation_standards", [])
+            standard_names = intent.get("source_standard", [])
+            if identifiers or standard_names:
+                standard_should = []
+                if identifiers:
+                    standard_should.append({"terms": {"identifier": identifiers}})
+                if standard_names:
+                    standard_should.append({"terms": {"source_standard": standard_names}})
+                filter_clauses.append({
+                    "bool": {
+                        "should": standard_should,
+                        "minimum_should_match": 1
                     }
                 })
 
-            # 添加等级过滤
+            # 2. requirement_items 过滤
             entities = intent.get("entities", {})
-            applicability_level = entities.get("applicability_level", [])
-            if applicability_level:
-                must_conditions.append({
-                    "terms": {
-                        "applicability_level.keyword": applicability_level
+            req_items = entities.get("requirement_items", [])
+            if req_items:
+                filter_clauses.append({
+                    "bool": {
+                        "should": [
+                            {"terms": {"requirement_item": req_items}},
+                            {"term": {"requirement_item": ""}}  # 允许空字符串
+                        ],
+                        "minimum_should_match": 1
                     }
                 })
 
-            # BM25查询
-            should_conditions = []
-            should_conditions.append({
-                "match": {
-                    "content": {
-                        "query": query_text,
-                        "boost": config["bm25_weight"]
-                    }
-                }
-            })
+            # 3. applicability_level 过滤（仅保留明确指定的等级）
+            appl_levels = entities.get("applicability_level", [])
+            if appl_levels:
+                allowed_levels = []
+                for lvl in appl_levels:
+                    if lvl in ("第一级", "第二级", "第三级", "三级", "二级", "一级"):
+                        allowed_levels.append(lvl)
+                if allowed_levels:
+                    filter_clauses.append({"terms": {"applicability_level": allowed_levels}})
 
-            # TODO: 向量查询需要先获取embedding
-            # 这里简化处理，仅使用BM25
-
-            # 构建完整查询
+            # 构建BM25查询（参考old代码_bm25_search）
             es_query = {
-                "bool": {
-                    "must": must_conditions if must_conditions else [{"match_all": {}}],
-                    "should": should_conditions
-                }
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "multi_match": {
+                                    "query": query_text,
+                                    "fields": [
+                                        "requirement_item^20.0",
+                                        "embedding_content^5.0",
+                                        "applicability_level^5.0"
+                                    ],
+                                    "type": "best_fields",
+                                    "fuzziness": "AUTO"
+                                }
+                            }
+                        ],
+                        "filter": filter_clauses if filter_clauses else []
+                    }
+                },
+                "size": 500,
+                "min_score": config.get("bm25_threshold", 0.7)
             }
 
             # 执行查询
             index_name = self.settings.es.knowledge_index
             response = self.es_client.search(
                 index=index_name,
-                query=es_query,
-                size=100
+                query=es_query["query"],
+                size=es_query["size"]
             )
 
             # 解析结果
@@ -416,22 +441,22 @@ class ESQueryService:
                 source = hit.get("_source", {})
                 score = hit.get("_score", 0.0)
 
-                # 归一化score
-                import math
-                normalized_score = 1.0 / (1.0 + math.exp(-score / 10.0))
-
                 item = KnowledgeItem(
                     content=source.get("content", ""),
-                    score=min(normalized_score, 1.0),
+                    score=score,
                     source=source.get("source_standard", ""),
                     metadata={
-                        "title": source.get("title"),
-                        "applicability_level": source.get("applicability_level"),
+                        "clause_key_en": source.get("clause_key_en", ""),
+                        "identifier": source.get("identifier", ""),
+                        "requirement_item": source.get("requirement_item", ""),
+                        "applicability_level": source.get("applicability_level", ""),
+                        "embedding_content": source.get("embedding_content", ""),
                         "raw_score": score
                     }
                 )
                 results.append(item)
 
+            logger.info(f"[ES检索] 意图{intent.get('num', 0)} BM25检索到 {len(results)} 条结果")
             return results
 
         except Exception as e:
