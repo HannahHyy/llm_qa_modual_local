@@ -1,0 +1,14 @@
+2025-12-26 13:21:03 | ERROR    | domain.services.neo4j_query_service:_parse_intent_only_with_stream:215 | [Neo4j意图识别] 失败: 'LLMModelSettings' object has no attribute 'neo4j_model'
+
+2025-12-26 13:21:03 | ERROR    | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 未获取到有效的意图列表
+
+2025-12-26 13:21:17 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
+
+2025-12-26 13:21:17 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
+
+2025-12-26 13:21:25 | ERROR    | domain.services.neo4j_query_service:_parse_intent_only_with_stream:215 | [Neo4j意图识别] 失败: 'LLMModelSettings' object has no attribute 'neo4j_model'
+
+2025-12-26 13:21:25 | ERROR    | domain.services.neo4j_query_service:query_stream:486 | [Neo4j查询] 未获取到有效的意图列表
+
+2025-12-26 13:22:28 | ERROR    | domain.services.es_query_service:_search_single_intent:439 | [ES检索] 单个意图检索失败: 'ESClient' object has no attribute 'client'
+
