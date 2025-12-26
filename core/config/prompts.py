@@ -319,6 +319,22 @@ class LLMModelSettings(BaseSettings):
 
     # ==================== Neo4j相关LLM ====================
 
+    # Neo4j通用配置（兼容旧代码）
+    neo4j_model: str = Field(
+        default="qwen-plus",
+        description="Neo4j通用模型（兼容旧代码）"
+    )
+
+    neo4j_max_tokens: int = Field(
+        default=8000,
+        description="Neo4j通用最大token数（兼容旧代码）"
+    )
+
+    neo4j_temperature: float = Field(
+        default=0.0,
+        description="Neo4j通用温度（兼容旧代码）"
+    )
+
     neo4j_intent_model: str = Field(
         default="qwen-plus",
         description="Neo4j意图解析使用的模型"

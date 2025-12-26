@@ -404,11 +404,10 @@ class ESQueryService:
 
             # 执行查询
             index_name = self.settings.es.knowledge_index
-            response = self.es_client.client.search(
+            response = self.es_client.search(
                 index=index_name,
                 query=es_query,
-                size=100,
-                _source=["content", "source_standard", "title", "applicability_level"]
+                size=100
             )
 
             # 解析结果
