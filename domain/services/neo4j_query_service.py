@@ -17,57 +17,309 @@ from core.config import get_settings, get_llm_model_settings
 
 
 class JsonExtractor:
-    """JSON提取器 - 从LLM输出中提取JSON"""
+    """
+    JSON提取器类 - 从LLM输出中智能提取JSON数据
+
+    提供多种方法从文本中提取JSON数据，支持：
+    1. 从文本末尾提取JSON（主要方法）- 使用括号匹配算法
+    2. 通过标记位置提取（支持中文提示词）
+    3. 通过正则表达式备用提取
+    """
+
+    def __init__(self):
+        """初始化JSON提取器"""
+        self.default_markers = [
+            "3.以下是json格式的解析结果：",
+            "json格式的解析结果：",
+            "json格式：",
+            "JSON格式：",
+            "解析结果：",
+            "结果：",
+            "```json",
+            "```",
+        ]
 
     def extract(self, text: str) -> Optional[List]:
         """
-        从文本中提取JSON列表 - 增强版，更健壮
+        安全提取JSON（推荐方法）
 
-        查找标识符：'3.以下是json格式的解析结果：'之后的JSON
+        使用多种策略依次尝试提取JSON：
+        1. 从文本末尾提取（使用括号匹配算法）
+        2. 通过标记位置提取
+
+        Args:
+            text: 包含JSON的文本
+
+        Returns:
+            list: 解析后的JSON列表，失败返回None
         """
         if not text:
             return None
 
-        try:
-            # 查找JSON标识符
-            if '3.以下是json格式的解析结果：' in text:
-                # 提取标识符后的内容
-                parts = text.split('3.以下是json格式的解析结果：')
-                if len(parts) > 1:
-                    json_part = parts[1].strip()
+        # 方法1: 从末尾提取（主要方法）
+        result = self._extract_from_end(text)
+        if result is not None:
+            logger.info(f"[JSON提取] 使用末尾提取方法成功")
+            return result
 
-                    # 调试：显示提取到的JSON部分长度
-                    logger.info(f"[JSON提取DEBUG] 提取到JSON部分长度: {len(json_part)}")
-                    logger.info(f"[JSON提取DEBUG] JSON前100字符: {json_part[:100]}")
+        # 方法2: 通过标记提取
+        result = self._try_extract_with_markers(text)
+        if result is not None:
+            logger.info(f"[JSON提取] 使用标记提取方法成功")
+            return result
 
-                    # 方法1：使用非贪婪匹配提取JSON数组
-                    match = re.search(r'\[.*?\]', json_part, re.DOTALL)
-                    if not match:
-                        # 方法2：使用贪婪匹配（可能包含嵌套）
-                        match = re.search(r'\[[\s\S]*\]', json_part)
+        logger.warning(f"[JSON提取] 所有提取方法都失败")
+        return None
 
-                    if match:
-                        json_str = match.group(0)
-                        logger.info(f"[JSON提取DEBUG] 匹配到JSON字符串长度: {len(json_str)}")
-                        logger.info(f"[JSON提取DEBUG] JSON字符串: {json_str[:200]}...")
-                        return json.loads(json_str)
+    def _extract_from_end(self, text: str) -> Optional[Union[Dict, List]]:
+        """
+        从文本末尾提取JSON（主要方法）- 使用括号匹配算法
 
-            # 尝试直接解析整个文本
-            match = re.search(r'\[[\s\S]*\]', text)
+        假设JSON总是在文本的最后部分，从后往前查找更高效
+        能够正确处理Cypher语句中的嵌套括号和特殊字符
+
+        Args:
+            text: 包含JSON的文本
+
+        Returns:
+            dict或list: 解析后的JSON数据，失败返回None
+        """
+        if not text or not isinstance(text, str):
+            return None
+
+        # 移除末尾的空白字符
+        text = text.rstrip()
+        if not text:
+            return None
+
+        # JSON可能的结束字符
+        json_end_chars = [']', '}']
+
+        # 从末尾开始查找
+        for end_char in json_end_chars:
+            # 找到最后一个结束字符的位置
+            end_idx = text.rfind(end_char)
+            if end_idx == -1:
+                continue
+
+            # 找到对应的起始字符
+            start_char = '[' if end_char == ']' else '{'
+
+            # 从结束位置向前查找匹配的起始字符（使用括号匹配算法）
+            start_idx = self._match_brackets_backward(text, start_char, end_char, end_idx)
+
+            if start_idx != -1:
+                json_str = text[start_idx:end_idx + 1]
+                try:
+                    # 验证并解析JSON
+                    json_data = json.loads(json_str)
+                    logger.info(f"[JSON提取DEBUG] 提取成功，JSON长度: {len(json_str)}")
+                    logger.info(f"[JSON提取DEBUG] JSON前200字符: {json_str[:200]}")
+                    return json_data
+                except json.JSONDecodeError as e:
+                    logger.warning(f"[JSON提取DEBUG] 括号匹配成功但解析失败: {e}")
+                    # 如果解析失败，继续尝试另一个结束字符
+                    continue
+
+        # 如果上面的方法都失败了，尝试更宽松的正则表达式
+        return self._extract_json_fallback(text)
+
+    def _match_brackets_backward(
+        self,
+        text: str,
+        start_char: str,
+        end_char: str,
+        end_idx: int
+    ) -> int:
+        """
+        从指定位置向前匹配括号，找到匹配的起始位置
+
+        能够正确处理：
+        - 字符串中的转义字符
+        - 字符串中的括号（不会被误认为是结构括号）
+        - 嵌套的括号结构
+
+        Args:
+            text: 文本内容
+            start_char: 起始字符 ('[' 或 '{')
+            end_char: 结束字符 (']' 或 '}')
+            end_idx: 结束字符的位置
+
+        Returns:
+            int: 匹配的起始位置，失败返回-1
+        """
+        bracket_count = 0
+        in_string = False
+        escape_next = False
+
+        for i in range(end_idx, -1, -1):  # 从后往前遍历
+            char = text[i]
+
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\' and i > 0:
+                # 检查前一个字符，判断是否是转义字符
+                prev_char = text[i - 1]
+                if prev_char != '\\':
+                    escape_next = True
+                continue
+
+            # 处理字符串内的引号
+            if char == '"':
+                # 检查前面的字符，判断是否是转义引号
+                if i > 0 and text[i - 1] == '\\':
+                    # 需要检查是否是连续偶数个反斜杠（转义的转义）
+                    backslash_count = 0
+                    j = i - 1
+                    while j >= 0 and text[j] == '\\':
+                        backslash_count += 1
+                        j -= 1
+                    # 如果反斜杠数量是偶数，则是转义引号，不算字符串边界
+                    if backslash_count % 2 == 0:
+                        in_string = not in_string
+                else:
+                    in_string = not in_string
+                continue
+
+            # 只在非字符串区域处理括号
+            if not in_string:
+                if char == end_char:
+                    bracket_count += 1
+                elif char == start_char:
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        return i
+
+        return -1
+
+    def _extract_json_fallback(self, text: str) -> Optional[Union[Dict, List]]:
+        """
+        备用方法：使用正则表达式从末尾提取JSON
+
+        Args:
+            text: 包含JSON的文本
+
+        Returns:
+            dict或list: 解析后的JSON数据，失败返回None
+        """
+        # 移除末尾空白
+        text = text.rstrip()
+
+        # 匹配JSON数组或对象（从末尾开始）
+        patterns = [
+            r'\[\s*\{.*?\}\s*\]\s*$',  # JSON数组格式
+            r'\{.*?\}\s*$',  # JSON对象格式
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.DOTALL)
             if match:
-                json_str = match.group(0)
-                return json.loads(json_str)
+                json_str = match.group(0).strip()
+                try:
+                    result = json.loads(json_str)
+                    logger.info(f"[JSON提取DEBUG] 正则备用方法成功")
+                    return result
+                except json.JSONDecodeError:
+                    continue
 
-            logger.warning(f"[JSON提取] 未找到JSON数组")
+        return None
+
+    def _try_extract_with_markers(self, text: str) -> Optional[Union[Dict, List]]:
+        """
+        通过JSON标记位置提取（作为最后的备选方案）
+
+        Args:
+            text: 包含JSON的文本
+
+        Returns:
+            dict或list: 解析后的JSON数据，失败返回None
+        """
+        # 找到所有标记的位置
+        marker_positions = []
+        for marker in self.default_markers:
+            # 查找所有出现位置，取最后一个
+            last_pos = text.rfind(marker)
+            if last_pos != -1:
+                marker_positions.append((last_pos + len(marker), marker))
+
+        if not marker_positions:
             return None
 
-        except json.JSONDecodeError as e:
-            logger.warning(f"[JSON提取] JSON解析失败: {e}")
-            logger.warning(f"[JSON提取] 尝试解析的文本前500字符: {text[:500]}")
-            return None
-        except Exception as e:
-            logger.warning(f"[JSON提取] 提取失败: {e}")
-            return None
+        # 取最靠后的标记位置
+        marker_positions.sort(reverse=True)
+        start_pos = marker_positions[0][0]
+        remaining = text[start_pos:].strip()
+
+        # 查找第一个JSON起始字符
+        json_start_chars = {'[': ']', '{': '}'}
+
+        for start_char, end_char in json_start_chars.items():
+            start_idx = remaining.find(start_char)
+            if start_idx == -1:
+                continue
+
+            # 使用标准方法匹配括号
+            end_idx = self._match_brackets_forward(remaining, start_char, end_char, start_idx)
+            if end_idx != -1:
+                json_str = remaining[start_idx:end_idx + 1]
+                try:
+                    result = json.loads(json_str)
+                    logger.info(f"[JSON提取DEBUG] 标记方法成功，使用标记: {marker_positions[0][1]}")
+                    return result
+                except json.JSONDecodeError:
+                    continue
+
+        return None
+
+    def _match_brackets_forward(
+        self,
+        text: str,
+        start_char: str,
+        end_char: str,
+        start_idx: int
+    ) -> int:
+        """
+        从指定位置向后匹配括号，找到匹配的结束位置
+
+        Args:
+            text: 文本内容
+            start_char: 起始字符 ('[' 或 '{')
+            end_char: 结束字符 (']' 或 '}')
+            start_idx: 起始字符的位置
+
+        Returns:
+            int: 匹配的结束位置，失败返回-1
+        """
+        bracket_count = 0
+        in_string = False
+        escape_next = False
+
+        for i in range(start_idx, len(text)):
+            char = text[i]
+
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\':
+                escape_next = True
+                continue
+
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+
+            if not in_string:
+                if char == start_char:
+                    bracket_count += 1
+                elif char == end_char:
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        return i
+
+        return -1
 
 
 class Neo4jIntentParser:
