@@ -120,7 +120,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    # 使用与old版本相同的端口8011
+    # 使用端口8011
     port = int(os.getenv("PORT", "8011"))
 
     uvicorn.run(
