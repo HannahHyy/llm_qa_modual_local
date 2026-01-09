@@ -1,5 +1,6 @@
 """
 应用依赖注入模块，提供所有服务的依赖注入函数
+只有API层调用，API层使用依赖注入函数获取服务实例
 """
 
 from functools import lru_cache

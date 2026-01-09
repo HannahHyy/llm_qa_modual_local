@@ -15,7 +15,7 @@ from core.logging import logger
 # router初始化定义
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
-
+# 完整路径: /api/chat + / = /api/chat/
 @router.post("/", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
@@ -47,7 +47,7 @@ async def chat(
         logger.error(f"对话接口错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# 完整路径: /api/chat + /stream = /api/chat/stream
 @router.post("/stream")
 async def chat_stream(
     request: Request,
@@ -113,7 +113,7 @@ async def chat_stream(
         logger.error(f"流式对话接口错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# 完整路径: /api/chat + /regenerate = /api/chat/regenerate
 @router.post("/regenerate")
 async def regenerate_response(
     session_id: str,
