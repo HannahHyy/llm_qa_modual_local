@@ -12,6 +12,7 @@ from application.services.legacy_streaming_service import LegacyStreamingService
 from fastapi import BackgroundTasks
 from core.logging import logger
 
+# router初始化定义
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 

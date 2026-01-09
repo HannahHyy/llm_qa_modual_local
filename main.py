@@ -65,7 +65,7 @@ app = FastAPI(
 
 # ============= 中间件配置 =============
 
-# 1. CORS中间件
+# 1. CORS中间件，处理跨域
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 生产环境应限制来源
@@ -74,17 +74,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. 日志中间件
+# 2. 日志中间件，记录日志
 app.add_middleware(logging_middleware)
 
-# 3. 错误处理中间件
+# 3. 错误处理中间件，错误处理
 app.add_middleware(error_handler_middleware)
 
-# 4. 限流中间件
+# 4. 限流中间件，限流
 app.add_middleware(
     rate_limit_middleware(
-        requests_per_minute=60,
-        requests_per_hour=1000
+        requests_per_minute=100,
+        requests_per_hour=10000
     )
 )
 

@@ -16,6 +16,7 @@ from api.dependencies import get_session_service
 from application.services import SessionService
 from core.logging import logger
 
+# router初始化定义
 router = APIRouter(prefix="/api/sessions", tags=["Sessions"])
 
 

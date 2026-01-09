@@ -12,6 +12,7 @@ from api.dependencies import (
 from infrastructure.clients import RedisClient, MySQLClient, ESClient
 from core.logging import logger
 
+# router初始化定义
 router = APIRouter(prefix="/api/health", tags=["Health"])
 
 

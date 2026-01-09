@@ -27,7 +27,7 @@ from core.config import get_settings, get_llm_model_settings, get_system_prompt
 
 class LegacyStreamingService:
     """
-    Legacy流式服务 - 完全复刻server2.py的逻辑
+    Legacy流式服务 - 完全复刻old/server2.py的逻辑
 
     职责:
     - 根据scene_id选择不同的查询模式
